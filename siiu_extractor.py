@@ -352,6 +352,25 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 except:
                     pass
                 
+                # Função de Espera Inteligente
+                def esperar_download_concluir(pasta, tempo_maximo=15, arquivos_ignorados=[]):
+                    tempo_inicial = time.time()
+                    while time.time() - tempo_inicial < tempo_maximo:
+                        pdfs_atuais = glob.glob(os.path.join(pasta, "*.pdf"))
+                        # Filtra arquivos novos
+                        pdfs_novos = [p for p in pdfs_atuais if p not in arquivos_ignorados]
+                        
+                        if pdfs_novos:
+                            # Se não tem arquivo terminando em .crdownload (download em andamento do chrome)
+                            arquivos_incompletos = glob.glob(os.path.join(pasta, "*.crdownload"))
+                            if not arquivos_incompletos:
+                                return max(pdfs_novos, key=os.path.getctime)
+                        
+                        time.sleep(0.5)
+                    return None
+                
+                # Lista de PDFs existentes antes de iniciar (para não ler PDF antigo)
+                pdfs_antigos = glob.glob(os.path.join(download_dir, "*.pdf"))
                 
                 # Download Histórico
                 if baixar_historico:
@@ -360,11 +379,10 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                         href_imprimir = btn_imprimir.get_attribute("href")
                         # Se abrir em nova aba, podemos simplesmente navegar para lá para forçar o download
                         driver.get(href_imprimir)
-                        time.sleep(10) # Aguarda download na nuvem
                         
-                        pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
-                        if pdfs:
-                            pdf_historico_path = max(pdfs, key=os.path.getctime)
+                        pdf_historico_path = esperar_download_concluir(download_dir, tempo_maximo=15, arquivos_ignorados=pdfs_antigos)
+                        if pdf_historico_path:
+                            pdfs_antigos.append(pdf_historico_path)
                     except Exception as e:
                         pass # Falha ao baixar
                         
@@ -374,16 +392,8 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                         btn_comprov = driver.find_element(By.XPATH, "//a[contains(@href, 'comprovante-matricula')]")
                         href_comprov = btn_comprov.get_attribute("href")
                         driver.get(href_comprov)
-                        time.sleep(10) # Aguarda download na nuvem
                         
-                        pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
-                        if pdfs:
-                            # Filtra para não pegar o mesmo do histórico
-                            pdfs = [p for p in pdfs if p != pdf_historico_path]
-                            if pdfs:
-                                pdf_comprovante_path = max(pdfs, key=os.path.getctime)
-                            elif not pdf_historico_path and pdfs:
-                                pdf_comprovante_path = max(pdfs, key=os.path.getctime)
+                        pdf_comprovante_path = esperar_download_concluir(download_dir, tempo_maximo=15, arquivos_ignorados=pdfs_antigos)
                     except Exception as e:
                         pass
             except Exception as e:
