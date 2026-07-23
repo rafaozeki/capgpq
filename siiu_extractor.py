@@ -332,7 +332,7 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     tese_match = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador|\nAno|Ano)", page_text, re.I | re.DOTALL)
                     if tese_match: html_info['titulo_tese'] = tese_match.group(1).replace('\n', ' ').strip()
                         
-                    orientador_match = re.search(r"Orientador(?:a)?.*?\nNome:\s*([^\n]+)", page_text, re.I)
+                    orientador_match = re.search(r"Orientador(?:a)?.*?\nNome:\s*([^\n]+)", page_text, re.I | re.DOTALL)
                     if orientador_match: html_info['orientador'] = orientador_match.group(1).strip()
                     
                     l1_match = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([^\n]+)", page_text, re.I)
