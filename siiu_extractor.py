@@ -106,7 +106,8 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Otimizações de velocidade
+    # Otimizações de velocidade agressivas
+    chrome_options.page_load_strategy = 'eager' # Não espera carregar scripts e CSS
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Desativa imagens
     chrome_options.add_argument("--disable-extensions")
