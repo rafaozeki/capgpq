@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 import traceback
+import sys
 import os
 import glob
 import time
@@ -125,8 +126,15 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
     
     # Inicializa o driver
     try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        if sys.platform.startswith('linux'):
+            # No Streamlit Cloud (Linux), usa o chromium instalado via apt-get
+            chrome_options.binary_location = "/usr/bin/chromium"
+            service = Service("/usr/bin/chromedriver")
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+        else:
+            # Localmente (Windows/Mac), usa o webdriver_manager
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
     except Exception as e:
         return {"status": "error", "message": f"Erro ao iniciar o Chrome/Selenium: {str(e)}"}
         
