@@ -139,6 +139,14 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
         return {"status": "error", "message": f"Erro ao iniciar o Chrome/Selenium: {str(e)}"}
         
     try:
+        driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": download_dir
+        })
+    except:
+        pass
+        
+    try:
         # 1. Navegar diretamente para a página alvo (Isso forçará o redirecionamento para o Login caso deslogado)
         target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
         driver.get(target_url)
@@ -346,9 +354,8 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                         href_imprimir = btn_imprimir.get_attribute("href")
                         # Se abrir em nova aba, podemos simplesmente navegar para lá para forçar o download
                         driver.get(href_imprimir)
-                        time.sleep(5) # Aguarda download
+                        time.sleep(10) # Aguarda download na nuvem
                         
-                        # Pega o arquivo mais recente na pasta
                         pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
                         if pdfs:
                             pdf_historico_path = max(pdfs, key=os.path.getctime)
@@ -361,7 +368,7 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                         btn_comprov = driver.find_element(By.XPATH, "//a[contains(@href, 'comprovante-matricula')]")
                         href_comprov = btn_comprov.get_attribute("href")
                         driver.get(href_comprov)
-                        time.sleep(5) # Aguarda download
+                        time.sleep(10) # Aguarda download na nuvem
                         
                         pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
                         if pdfs:
