@@ -438,4 +438,6 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
         error_trace = traceback.format_exc()
         return {"status": "error", "message": f"Erro crítico na execução do robô: {str(e)}\n{error_trace}"}
     finally:
-        driver.quit()
+        if not cached_driver and driver:
+            try: driver.quit()
+            except: pass
