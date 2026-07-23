@@ -316,14 +316,25 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     sit_match = re.search(r"Situação(?:\s*da\s*Tese)?:\s*([^\n]+)", page_text, re.I)
                     if sit_match: html_info['situacao_tese'] = sit_match.group(1).strip()
                         
-                    membros_match = re.search(r"Membros\s*da\s*Banca:\s*([^\n]+)", page_text, re.I)
-                    if membros_match: html_info['membros_banca'] = membros_match.group(1).strip()
+                    membros_match = re.search(r"Membros\s*da\s*banca.*?(?:\nTipo de participação\n)?(.*?)\n(?:Idiomas|Total de créditos|Para a soma)", page_text, re.I | re.DOTALL)
+                    if membros_match:
+                        banca_raw = membros_match.group(1).strip()
+                        html_info['membros_banca'] = banca_raw.replace("\n", ", ")
                         
                     tese_match = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador|\nAno|Ano)", page_text, re.I | re.DOTALL)
                     if tese_match: html_info['titulo_tese'] = tese_match.group(1).replace('\n', ' ').strip()
                         
-                    orientador_match = re.search(r"Orientador(?:a)?:\s*([^\n]+)", page_text, re.I)
+                    orientador_match = re.search(r"Orientador(?:a)?.*?\nNome:\s*([^\n]+)", page_text, re.I)
                     if orientador_match: html_info['orientador'] = orientador_match.group(1).strip()
+                    
+                    l1_match = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([^\n]+)", page_text, re.I)
+                    if l1_match: html_info['lingua_1'] = l1_match.group(1).strip()
+                    
+                    l2_match = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([^\n]+)", page_text, re.I)
+                    if l2_match: html_info['lingua_2'] = l2_match.group(1).strip()
+                    
+                    ct_match = re.search(r"Total\s*de\s*créditos\s*obtidos:\s*(\d+)", page_text, re.I)
+                    if ct_match: html_info['creditos_total'] = ct_match.group(1).strip()
                 except:
                     pass
                 
