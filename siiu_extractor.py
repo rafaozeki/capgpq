@@ -106,6 +106,12 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
+    # Otimizações de velocidade
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Desativa imagens
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-notifications")
     
     # Configura pasta temporária de downloads
     download_dir = os.path.join(os.getcwd(), "temp_downloads")
