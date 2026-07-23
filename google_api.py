@@ -24,6 +24,20 @@ def get_credentials():
             return creds
     except Exception:
         pass # Ignora erro caso o arquivo secrets.toml não exista localmente
+        
+    # 1.5. Verifica se o token OAuth pessoal foi passado pelo st.secrets
+    try:
+        if "google_oauth_token" in st.secrets:
+            # secrets["google_oauth_token"] deve conter o JSON do credentials
+            token_info = json.loads(st.secrets["google_oauth_token"])
+            creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+            
+            # Se expirou, tenta atualizar
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            return creds
+    except Exception:
+        pass
 
     # 2. Caso contrário, usa o fluxo local (OAuth com credentials.json)
     creds = None
