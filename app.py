@@ -753,7 +753,16 @@ def show_academic_analysis():
             with st.spinner("Iniciando robô (Selenium)... Isso pode levar alguns segundos..."):
                 try:
                     import siiu_extractor
-                    resultado = siiu_extractor.extract_student_data(login_siiu, senha_siiu, termo_busca, programa, True, True)
+                    
+                    # Usa a sessão cacheada para não precisar abrir o Chrome de novo!
+                    sessao_siiu, erro_login = obter_sessao_siiu(login_siiu, senha_siiu)
+                    
+                    if erro_login or not sessao_siiu:
+                        resultado = {"status": "error", "message": erro_login or "Falha crítica na sessão"}
+                        # Limpa o cache se o login falhou
+                        obter_sessao_siiu.clear()
+                    else:
+                        resultado = siiu_extractor.extract_student_data_hybrid(sessao_siiu, termo_busca, programa, True, True)
                     
                     if resultado.get("status") == "error":
                         st.error(f"O robô encontrou um problema: {resultado.get('message')}")
