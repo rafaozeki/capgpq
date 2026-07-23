@@ -73,13 +73,6 @@ def save_json(data, filepath):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-@st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
-def obter_sessao_siiu(login, senha):
-    import siiu_extractor
-    session, erro = siiu_extractor.get_siiu_session(login, senha)
-    return session, erro
-
-
 def extract_relevant_data(row_data, header):
     extracted = {}
     for col_name, value in zip(header, row_data):
@@ -751,6 +744,12 @@ def show_academic_analysis():
         
     st.write("---")
     
+    @st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
+    def init_cached_driver(login, senha):
+        import siiu_extractor
+        driver, erro = siiu_extractor.init_cached_driver(login, senha)
+        return driver, erro
+
     if st.button("Pesquisar e Extrair Dados do SIIU", type="primary"):
         if not login_siiu or not senha_siiu:
             st.error("Por favor, insira suas credenciais do SIIU para permitir o acesso do robô.")
@@ -760,16 +759,13 @@ def show_academic_analysis():
             with st.spinner("Iniciando robô (Selenium)... Isso pode levar alguns segundos..."):
                 try:
                     import siiu_extractor
+                    cached_driver, erro_login = init_cached_driver(login_siiu, senha_siiu)
                     
-                    # Usa a sessão cacheada para não precisar abrir o Chrome de novo!
-                    sessao_siiu, erro_login = obter_sessao_siiu(login_siiu, senha_siiu)
-                    
-                    if erro_login or not sessao_siiu:
+                    if erro_login or not cached_driver:
                         resultado = {"status": "error", "message": erro_login or "Falha crítica na sessão"}
-                        # Limpa o cache se o login falhou
-                        obter_sessao_siiu.clear()
+                        init_cached_driver.clear()
                     else:
-                        resultado = siiu_extractor.extract_student_data_hybrid(sessao_siiu, termo_busca, programa, True, True)
+                        resultado = siiu_extractor.extract_student_data(login_siiu, senha_siiu, termo_busca, programa, True, True, cached_driver=cached_driver)
                     
                     if resultado.get("status") == "error":
                         st.error(f"O robô encontrou um problema: {resultado.get('message')}")
