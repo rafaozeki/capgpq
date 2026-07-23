@@ -73,6 +73,13 @@ def save_json(data, filepath):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+@st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
+def obter_sessao_siiu(login, senha):
+    import siiu_extractor
+    session, erro = siiu_extractor.get_siiu_session(login, senha)
+    return session, erro
+
+
 def extract_relevant_data(row_data, header):
     extracted = {}
     for col_name, value in zip(header, row_data):
