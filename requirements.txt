@@ -7,3 +7,4 @@ altair
 selenium
 webdriver-manager
 pymupdf
+pdfplumber
