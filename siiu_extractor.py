@@ -167,8 +167,15 @@ def extract_student_data_hybrid(session, query, programa, baixar_historico=False
                 break
                 
     # 2. Fazer a busca
-    search_url = f"{base_url}?descricao={query}&areas_prin_codigo={program_id}&comboCursosPg=0&comboNivel=0&comboSitAcad=0&item=10"
-    resp_search = session.get(search_url)
+    params = {
+        "descricao": query,
+        "areas_prin_codigo": program_id,
+        "comboCursosPg": 0,
+        "comboNivel": 0,
+        "comboSitAcad": 0,
+        "item": 10
+    }
+    resp_search = session.get(base_url, params=params)
     soup_search = BeautifulSoup(resp_search.text, 'html.parser')
     
     # Encontrar links do aluno na tabela
@@ -183,7 +190,8 @@ def extract_student_data_hybrid(session, query, programa, baixar_historico=False
             comprovante_url = link['href']
             
     if not historico_url:
-        return {"status": "error", "message": "Nenhum histórico encontrado para esta busca."}
+        debug_html = soup_search.get_text()[:2000]
+        return {"status": "error", "message": f"Nenhum histórico encontrado para esta busca. Verifique se o nome/matrícula ou programa estão corretos. (Debug: {debug_html})"}
         
     if not historico_url.startswith("http"):
         historico_url = "https://notas-propgpq.siiu.unifesp.br" + historico_url
