@@ -15,8 +15,6 @@ import os
 import glob
 import time
 import re
-import requests
-import base64
 try:
     import pdfplumber
 except ImportError:
@@ -349,40 +347,18 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     pass
                 
                 
-                def safe_download_pdf(href, prefix):
-                    try:
-                        session = requests.Session()
-                        for cookie in driver.get_cookies():
-                            session.cookies.set(cookie['name'], cookie['value'])
-                        
-                        res = session.get(href)
-                        path = os.path.join(download_dir, f"{prefix}_{int(time.time())}.pdf")
-                        
-                        if 'application/pdf' in res.headers.get('Content-Type', ''):
-                            with open(path, 'wb') as f:
-                                f.write(res.content)
-                            return path
-                        else:
-                            # Se não for PDF direto, usa o navegador e gera o PDF (útil para páginas de impressão)
-                            driver.get(href)
-                            time.sleep(3)
-                            pdf_b64 = driver.execute_cdp_cmd("Page.printToPDF", {
-                                "printBackground": True,
-                                "landscape": False,
-                                "displayHeaderFooter": False
-                            })
-                            with open(path, "wb") as f:
-                                f.write(base64.b64decode(pdf_b64['data']))
-                            return path
-                    except Exception as e:
-                        return None
-                        
                 # Download Histórico
                 if baixar_historico:
                     try:
                         btn_imprimir = driver.find_element(By.XPATH, "//a[contains(@href, 'secretaria-imprimir')]")
                         href_imprimir = btn_imprimir.get_attribute("href")
-                        pdf_historico_path = safe_download_pdf(href_imprimir, "historico")
+                        # Se abrir em nova aba, podemos simplesmente navegar para lá para forçar o download
+                        driver.get(href_imprimir)
+                        time.sleep(10) # Aguarda download na nuvem
+                        
+                        pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
+                        if pdfs:
+                            pdf_historico_path = max(pdfs, key=os.path.getctime)
                     except Exception as e:
                         pass # Falha ao baixar
                         
@@ -391,7 +367,17 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     try:
                         btn_comprov = driver.find_element(By.XPATH, "//a[contains(@href, 'comprovante-matricula')]")
                         href_comprov = btn_comprov.get_attribute("href")
-                        pdf_comprovante_path = safe_download_pdf(href_comprov, "comprovante")
+                        driver.get(href_comprov)
+                        time.sleep(10) # Aguarda download na nuvem
+                        
+                        pdfs = glob.glob(os.path.join(download_dir, "*.pdf"))
+                        if pdfs:
+                            # Filtra para não pegar o mesmo do histórico
+                            pdfs = [p for p in pdfs if p != pdf_historico_path]
+                            if pdfs:
+                                pdf_comprovante_path = max(pdfs, key=os.path.getctime)
+                            elif not pdf_historico_path and pdfs:
+                                pdf_comprovante_path = max(pdfs, key=os.path.getctime)
                     except Exception as e:
                         pass
             except Exception as e:
