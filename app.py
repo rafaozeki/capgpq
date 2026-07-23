@@ -920,6 +920,10 @@ def show_academic_analysis():
                         st.download_button(label="Baixar Comprovante (PDF)", data=pdf_data2, file_name=f"Comprovante_{resultado['aluno_info'].get('nome', 'Aluno')}.pdf", mime="application/pdf", type="primary", key="btn_down_comp")
                 except Exception as e:
                     st.error(f"Erro ao ler PDF do Comprovante: {e}")
+                    
+        with st.expander("🛠️ Debug (Para enviar ao desenvolvedor)"):
+            st.write("Se os dados acima estiverem incompletos, copie o texto abaixo e envie para o desenvolvedor analisar:")
+            st.code(f"URL: {resultado.get('debug_url', 'N/A')}\n\nPAGE_TEXT:\n{resultado.get('debug_text', 'N/A')}", language="text")
 
 def show_demand_page(sheet_id, info):
     st.title(f"{info['tipo']}")
