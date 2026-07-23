@@ -156,9 +156,9 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
         # 1. Navegar diretamente para a página alvo (Isso forçará o redirecionamento para o Login caso deslogado)
         target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
         driver.get(target_url)
-        time.sleep(3)
         
         # 2. Verifica se foi redirecionado para login e faz o login
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         if "login" in driver.current_url.lower():
             try:
                 # O login da UNIFESP usa um form padrão. O botão tem texto "Entrar".
@@ -181,7 +181,6 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 WebDriverWait(driver, 20).until(
                     lambda d: "login" not in d.current_url.lower()
                 )
-                time.sleep(2) # Pequena pausa após o carregamento
             except Exception as e:
                 page_text = driver.find_element(By.TAG_NAME, "body").text[:200] if driver.find_elements(By.TAG_NAME, "body") else ""
                 return {"status": "error", "message": f"Falha ao realizar login. URL: {driver.current_url}. Body: {page_text}. Erro: {e}"}
@@ -220,9 +219,8 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                             break
                             
                 if selected:
-                    # O site recarrega a página ao selecionar o programa!
-                    time.sleep(3)
-                    # Re-aguarda o elemento após o refresh
+                    # O site recarrega a página ao selecionar o programa! Aguardamos elemento ficar obsoleto ou reaparecer
+                    time.sleep(1)
                     WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
                     )
@@ -236,8 +234,13 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
             btn_pesquisar = driver.find_element(By.XPATH, "//button[contains(text(), 'Pesquisar') or contains(., 'Pesquisar')]")
             driver.execute_script("arguments[0].click();", btn_pesquisar)
             
-            # Aguarda a tabela carregar
-            time.sleep(4)
+            # Aguarda a tabela carregar, olhando por um link de histórico
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'historico/')] | //td[contains(text(), 'Nenhum')]"))
+                )
+            except:
+                time.sleep(2)
         except Exception as e:
             try:
                 page_text = driver.find_element(By.TAG_NAME, "body").text[:400]
