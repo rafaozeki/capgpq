@@ -1,0 +1,6 @@
+﻿venv/
+__pycache__/
+credentials.json
+token.pickle
+config.json
+temp_downloads/
