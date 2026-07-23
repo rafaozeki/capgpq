@@ -260,6 +260,12 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 historico_url = historico_btn.get_attribute("href")
             except:
                 historico_url = None
+                    
+            if not historico_url:
+                try:
+                    debug_row_html = first_row.get_attribute("outerHTML")
+                except:
+                    debug_row_html = "Erro ao pegar outerHTML"
                 
         except Exception as e:
             return {"status": "error", "message": f"Falha ao extrair dados da tabela. Erro: {e}"}
@@ -379,13 +385,17 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
         }
         aluno_final.update(pdf_info)
 
+        debug_text_final = page_text[:2000] if 'page_text' in locals() else (debug_row_html if 'debug_row_html' in locals() else "Nenhum page_text capturado")
+        
         return {
             "status": "success",
             "message": "Dados extraídos com sucesso da tabela de busca e do PDF.",
             "aluno_info": aluno_final,
             "historico": historico_dados,
             "pdf_historico": pdf_historico_path,
-            "pdf_comprovante": pdf_comprovante_path
+            "pdf_comprovante": pdf_comprovante_path,
+            "debug_url": historico_url,
+            "debug_text": debug_text_final
         }
 
     except Exception as e:
