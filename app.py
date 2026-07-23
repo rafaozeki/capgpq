@@ -166,6 +166,8 @@ def main():
         for sheet_id, info in config.items():
             demand_options.append(info.get('tipo', 'Demanda'))
             
+        demand_options = sorted(list(set(demand_options)))
+            
     for option in demand_options:
         btn_type = "primary" if st.session_state.current_page == option else "secondary"
         if st.sidebar.button(option, type=btn_type, use_container_width=True):
