@@ -472,6 +472,29 @@ def show_dashboard(config):
     for ppg in PPGS_OFICIAIS:
         atividades_por_ppg[ppg] = 0
     atividades_por_ppg["Não Identificado"] = 0
+
+    from siiu_extractor import PPG_MAPPING_SIIU
+    import unicodedata
+    def norm(txt):
+        return "".join(c for c in unicodedata.normalize('NFD', str(txt).upper()) if unicodedata.category(c) != 'Mn').strip()
+
+    def normalize_ppg(raw_ppg_name):
+        if not raw_ppg_name:
+            return "Não Identificado"
+        p_norm = norm(raw_ppg_name)
+        for k, v in PPG_MAPPING_SIIU.items():
+            if k in p_norm or p_norm in k:
+                if "HISTORIA DA ARTE" in v: return "História da Arte"
+                elif "HISTORIA" in v: return "Ensino de História" if "ENSINO" in v else "História"
+                elif "SOCIAIS" in v: return "Ciências Sociais"
+                elif "SAUDE" in v: return "Educação e Saúde"
+                elif "EDUCACAO" in v: return "Educação"
+                elif "FILOSOFIA" in v: return "Filosofia"
+                elif "LETRAS" in v: return "Letras"
+        for p_of in PPGS_OFICIAIS:
+            if norm(p_of) in p_norm or p_norm in norm(p_of):
+                return p_of
+        return "Não Identificado"
     
     try:
         for sheet_id, info in config.items():
@@ -514,13 +537,10 @@ def show_dashboard(config):
                     
                     if ppg_col_index is not None and len(row) > ppg_col_index:
                         valor_ppg = str(row_padded[ppg_col_index]).strip()
-                        encontrou = False
-                        for ppg_oficial in PPGS_OFICIAIS:
-                            if ppg_oficial.lower() in valor_ppg.lower():
-                                atividades_por_ppg[ppg_oficial] += 1
-                                encontrou = True
-                                break
-                        if not encontrou:
+                        ppg_normalizado = normalize_ppg(valor_ppg)
+                        if ppg_normalizado in atividades_por_ppg:
+                            atividades_por_ppg[ppg_normalizado] += 1
+                        else:
                             atividades_por_ppg["Não Identificado"] += 1
                     else:
                         atividades_por_ppg["Não Identificado"] += 1
@@ -798,15 +818,15 @@ def show_academic_analysis():
             "Programa de Pós-Graduação (Obrigatório no SIIU):", 
             [
                 "Todos os Programas", 
-                "CIÊNCIAS SOCIAIS", 
-                "EDUCAÇÃO", 
-                "EDUCAÇÃO E SAÚDE NA INFÂNCIA E NA ADOLESCÊNCIA", 
-                "ENSINO DE HISTÓRIA", 
-                "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS", 
-                "FILOSOFIA", 
-                "HISTÓRIA", 
-                "HISTÓRIA DA ARTE", 
-                "LETRAS", 
+                "Ciências Sociais", 
+                "Educação", 
+                "Educação e Saúde", 
+                "Filosofia", 
+                "História", 
+                "História da Arte", 
+                "Letras", 
+                "ProfHistória - Mestrado Profissional",
+                "ProfHistória - Doutorado Profissional",
                 "Pós-Doutorado"
             ]
         )
