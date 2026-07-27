@@ -466,10 +466,11 @@ def show_dashboard(config):
         atividades_por_ppg[ppg] = 0
     atividades_por_ppg["Não Identificado"] = 0
     
-    for sheet_id, info in config.items():
-        tipo = info.get('tipo', 'Outros')
-        if tipo not in atividades_por_tipo:
-            atividades_por_tipo[tipo] = 0
+    try:
+        for sheet_id, info in config.items():
+            tipo = info.get('tipo', 'Outros')
+            if tipo not in atividades_por_tipo:
+                atividades_por_tipo[tipo] = 0
             
         try:
             data = get_sheet_data(sheet_id, info.get('aba', 'Respostas ao formulário 1'))
