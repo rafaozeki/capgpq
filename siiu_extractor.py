@@ -160,10 +160,8 @@ def init_cached_driver(login, senha):
     except Exception as e:
         return None, f"Erro ao iniciar Chrome ou logar: {e}"
 
-def search_student_candidates(login, senha, query, programa, cached_driver=None):
-    """
-    Realiza a pesquisa de discente no SIIU e retorna a lista de TODOS os candidatos/vínculos encontrados.
-    """
+def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):
+    """Realiza a busca no SIIU e retorna uma lista de candidatos encontrados (sem baixar arquivos ainda)."""
     driver = cached_driver
     if not driver:
         driver, err = init_cached_driver(login, senha)
@@ -245,9 +243,7 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None)
             time.sleep(2)
 
         table_rows = driver.find_elements(By.XPATH, "//table//tbody/tr")
-        if not table_rows or len(table_rows) == 0:
-            return {"status": "error", "message": "Nenhum aluno encontrado ou a tabela demorou muito para carregar."}
-
+        
         candidates = []
         for idx, row in enumerate(table_rows):
             cols = row.find_elements(By.TAG_NAME, "td")
@@ -279,13 +275,14 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None)
                     "historico_url": historico_url
                 })
 
-        if not candidates:
+        if not candidates or len(candidates) == 0:
+            if fallback_name and query != fallback_name:
+                return search_student_candidates(login, senha, query=fallback_name, programa=programa, cached_driver=driver)
+            elif programa != "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS":
+                return search_student_candidates(login, senha, query=query, programa="ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS", cached_driver=driver, fallback_name=fallback_name)
             return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
 
-        return {
-            "status": "success",
-            "candidates": candidates
-        }
+        return {"status": "success", "candidates": candidates, "cached_driver": driver}
 
     except Exception as e:
         error_trace = traceback.format_exc()

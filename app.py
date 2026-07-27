@@ -1347,6 +1347,7 @@ def show_demand_page(sheet_id, info):
                     if st.button(f"🔍 Conferir com SIIU & Gerar Sequência ({modulo_nome})", key=key_check_btn, type="primary"):
                         # Prioridade de busca: 1º Matrícula (RA), 2º CPF, 3º Nome
                         nome_busca = tf['matricula']['val'] or tf['cpf']['val'] or tf['nome']['val']
+                        nome_fallback = tf['nome']['val'] if (tf['nome']['val'] and nome_busca != tf['nome']['val']) else ""
                         ppg_busca = tf['ppg']['val'] or "Todos os Programas"
                         
                         if not login_siiu or not senha_siiu:
@@ -1361,7 +1362,12 @@ def show_demand_page(sheet_id, info):
                                     if err_drv or not cached_driver:
                                         st.error(f"Erro de autenticação no SIIU: {err_drv}")
                                     else:
-                                        s_res = siiu_extractor.search_student_candidates(login_siiu, senha_siiu, nome_busca, ppg_busca, cached_driver=cached_driver)
+                                        s_res = siiu_extractor.search_student_candidates(
+                                            login_siiu, senha_siiu, 
+                                            nome_busca, ppg_busca, 
+                                            cached_driver=cached_driver,
+                                            fallback_name=nome_fallback
+                                        )
                                         if s_res.get("status") == "error":
                                             st.error(f"Erro ao buscar aluno no SIIU: {s_res.get('message')}")
                                         else:
