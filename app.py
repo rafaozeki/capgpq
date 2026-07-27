@@ -768,18 +768,22 @@ def show_academic_analysis():
     st.subheader("1. Credenciais do SIIU")
     st.info("Suas credenciais não serão salvas. Elas são usadas apenas temporariamente para o robô acessar o sistema em seu nome.")
     
-    c1, c2 = st.columns(2)
-    with c1:
-        login_siiu = st.text_input("Usuário:")
-    with c2:
-        senha_siiu = st.text_input("Senha:", type="password")
-        
-    if st.button("Efetuar Login"):
-        if login_siiu and senha_siiu:
-            st.session_state['siiu_logged_in'] = True
-            st.success("✅ Credenciais informadas com sucesso! Você já pode realizar a busca.")
-        else:
-            st.warning("⚠️ Preencha usuário e senha para efetuar login.")
+    c_form, _ = st.columns([4, 1])
+    with st.form("form_login_siiu"):
+        c1, c2 = st.columns(2)
+        with c1:
+            login_siiu = st.text_input("Usuário:", value=st.session_state.get('login_siiu', ''))
+        with c2:
+            senha_siiu = st.text_input("Senha:", type="password", value=st.session_state.get('senha_siiu', ''))
+            
+        if st.form_submit_button("Efetuar Login / Atualizar Credenciais"):
+            if login_siiu and senha_siiu:
+                st.session_state['login_siiu'] = login_siiu
+                st.session_state['senha_siiu'] = senha_siiu
+                st.session_state['siiu_logged_in'] = True
+                st.success("✅ Credenciais informadas com sucesso! Você já pode realizar a busca.")
+            else:
+                st.warning("⚠️ Preencha usuário e senha para efetuar login.")
         
     st.divider()
     st.subheader("2. Busca de Aluno")
@@ -1317,14 +1321,14 @@ def show_demand_page(sheet_id, info):
 
                 if not login_siiu or not senha_siiu:
                     st.info("🔑 **Informe suas credenciais do SIIU (usadas apenas temporariamente na memória desta sessão):**")
-                    col_cr1, col_cr2, col_cr3 = st.columns([2, 2, 1])
-                    with col_cr1:
-                        u_input = st.text_input("Usuário SIIU:", value=login_siiu, key=f"usr_siiu_trans_{idx_real_na_planilha}")
-                    with col_cr2:
-                        p_input = st.text_input("Senha SIIU:", value=senha_siiu, type="password", key=f"pwd_siiu_trans_{idx_real_na_planilha}")
-                    with col_cr3:
-                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                        if st.button("Usar nesta Sessão", key=f"btn_save_cred_trans_{idx_real_na_planilha}"):
+                    with st.form(f"form_cred_trans_{idx_real_na_planilha}"):
+                        col_cr1, col_cr2 = st.columns(2)
+                        with col_cr1:
+                            u_input = st.text_input("Usuário SIIU:", value=login_siiu)
+                        with col_cr2:
+                            p_input = st.text_input("Senha SIIU:", value=senha_siiu, type="password")
+                            
+                        if st.form_submit_button("Usar nesta Sessão"):
                             if u_input and p_input:
                                 st.session_state['login_siiu'] = u_input
                                 st.session_state['senha_siiu'] = p_input
