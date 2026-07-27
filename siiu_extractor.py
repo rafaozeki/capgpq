@@ -179,32 +179,56 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None)
             EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
         )
         
+        select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
+        selected = False
+        
         if programa == "Pós-Doutorado":
             programa_busca = "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
         else:
-            programa_busca = programa
+            programa_busca = programa or ""
 
-        if programa_busca != "Todos os Programas":
-            select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
-            selected = False
+        import unicodedata
+        def norm(txt):
+            return "".join(c for c in unicodedata.normalize('NFD', str(txt).upper()) if unicodedata.category(c) != 'Mn').strip()
+
+        p_norm = norm(programa_busca)
+        
+        if p_norm and p_norm != "TODOS OS PROGRAMAS":
+            # 1. Tenta correspondência exata
             for option in select_programa.options:
-                if programa_busca.upper() == option.text.strip().upper():
+                if norm(option.text) == p_norm:
                     select_programa.select_by_visible_text(option.text)
                     selected = True
                     break
                     
+            # 2. Tenta correspondência parcial
             if not selected:
+                candidates_opt = []
                 for option in select_programa.options:
-                    if programa_busca.upper() in option.text.upper():
-                        select_programa.select_by_visible_text(option.text)
-                        selected = True
-                        break
-                        
-            if selected:
-                time.sleep(1)
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
-                )
+                    opt_norm = norm(option.text)
+                    if p_norm in opt_norm:
+                        candidates_opt.append(option)
+                if candidates_opt:
+                    best_opt = min(candidates_opt, key=lambda o: len(o.text))
+                    select_programa.select_by_visible_text(best_opt.text)
+                    selected = True
+
+        # Se ainda não selecionou nada (ex: "Todos os Programas" ou não encontrou), seleciona o primeiro programa válido (índice 1)
+        # para que o SIIU não rejeite o formulário dizendo "Selecione um programa para iniciar a sua pesquisa"
+        if not selected:
+            for option in select_programa.options:
+                val = option.get_attribute("value")
+                txt = option.text.strip()
+                if val and val != "0" and txt and "SELECIONE" not in norm(txt):
+                    select_programa.select_by_visible_text(option.text)
+                    selected = True
+                    break
+
+        if selected:
+            time.sleep(1)
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
+            )
         
         search_input = driver.find_element(By.XPATH, "//input[@name='descricao' or @id='descricao' or contains(@placeholder, 'Nome') or @type='text']")
         search_input.clear()
