@@ -69,14 +69,65 @@ def get_secret(key, default=""):
         pass
     return os.environ.get(key, default)
 
+DEFAULT_CONFIG = {
+    "1agccixes8ld6ecxGavMOxEd0R4Efnp6lDtruJ2tjOUM": {
+        "name": "Requisição de Passe Escolar - EMTU UNIFESP (respostas)",
+        "aba": "EMTU",
+        "tipo": "EMTU - Requisição de Passe Escolar"
+    },
+    "1IUxi5NEoxcBn7y9s9euUcALmINoE29of7NkaLcYZUbk": {
+        "name": "Solicitação de Declaração de Conclusão (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Declaração de Conclusão de Curso"
+    },
+    "14zUk4m1WI6JK7mIg5v1T0shMsmWzwM2sd9MH-ApFfkI": {
+        "name": "SEI - Diplomas - Gerenciamento (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Solicitações de Diplomas"
+    },
+    "1bvpgCyLUw8C7c_yX54EWe3CPv_5JsfMC-OdNJj3wYdg": {
+        "name": "Solicitação de Histórico Escolar - UNIFESP (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Históricos Acadêmicos"
+    },
+    "1ourQvwY79sEVqvSB_ip7vKO0LrraAZk9F6sf6UB8Sjk": {
+        "name": "SEI - DISCENTE - LIBERAÇÃO DE USUÁRIO EXTERNO (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Liberação de Usuário Externo (Discente)"
+    },
+    "1Vrcu5Fcd9D2_NwJ2M4RvR-DlFYSh44TMlilHNCJTDWw": {
+        "name": "SEI - LIBERAÇÃO DE USUÁRIO EXTERNO - DOCENTE (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Liberação de Usuário Externo (Docente)"
+    },
+    "11Te_uPZUBtW4qYI6-NHEBJN4DKTGOtexSpjMMV8A6wE": {
+        "name": "Requisição de Passe Escolar  UNIFESP- SPTrans (respostas)",
+        "aba": "SPTRANS",
+        "tipo": "SPTrans - Requisição de Passe Escolar"
+    },
+    "1V0dREdi3XmimuIu8u4YceqwJWDlQe7amfL6RkO2AeO0": {
+        "name": "Controle de Processos - SEI (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Controle de Processos SEI"
+    },
+    "18vB8bsZLPDrNLX54Ub8vaE3w56pZfhX2pS2F-LYvhkw": {
+        "name": "Membros - Bancas de Defesas - cadastro - SIIU (respostas)",
+        "aba": "Respostas ao formulário 1",
+        "tipo": "Cadastro - Membros de Bancas de Defesa"
+    }
+}
+
 def load_json(filepath):
+    config_data = dict(DEFAULT_CONFIG)
     if os.path.exists(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             try:
-                return json.load(f)
+                user_data = json.load(f)
+                if isinstance(user_data, dict):
+                    config_data.update(user_data)
             except json.JSONDecodeError:
-                return {}
-    return {}
+                pass
+    return config_data
 
 def save_json(data, filepath):
     with open(filepath, 'w', encoding='utf-8') as f:
