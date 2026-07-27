@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import re
 import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
@@ -1344,7 +1345,8 @@ def show_demand_page(sheet_id, info):
                 col_ac1, col_ac2 = st.columns([3, 2])
                 with col_ac1:
                     if st.button(f"🔍 Conferir com SIIU & Gerar Sequência ({modulo_nome})", key=key_check_btn, type="primary"):
-                        nome_busca = tf['nome']['val'] or tf['cpf']['val'] or tf['matricula']['val']
+                        # Prioridade de busca: 1º Matrícula (RA), 2º CPF, 3º Nome
+                        nome_busca = tf['matricula']['val'] or tf['cpf']['val'] or tf['nome']['val']
                         ppg_busca = tf['ppg']['val'] or "Todos os Programas"
                         
                         if not login_siiu or not senha_siiu:
