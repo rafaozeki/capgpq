@@ -1316,7 +1316,7 @@ def show_demand_page(sheet_id, info):
                 senha_siiu = st.session_state.get('senha_siiu', '') or get_secret('senha_siiu', '')
 
                 if not login_siiu or not senha_siiu:
-                    st.info("🔑 **Informe suas credenciais do SIIU para habilitar a conferência automatizada:**")
+                    st.info("🔑 **Informe suas credenciais do SIIU (usadas apenas temporariamente na memória desta sessão):**")
                     col_cr1, col_cr2, col_cr3 = st.columns([2, 2, 1])
                     with col_cr1:
                         u_input = st.text_input("Usuário SIIU:", value=login_siiu, key=f"usr_siiu_trans_{idx_real_na_planilha}")
@@ -1324,11 +1324,11 @@ def show_demand_page(sheet_id, info):
                         p_input = st.text_input("Senha SIIU:", value=senha_siiu, type="password", key=f"pwd_siiu_trans_{idx_real_na_planilha}")
                     with col_cr3:
                         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                        if st.button("Salvar Credenciais", key=f"btn_save_cred_trans_{idx_real_na_planilha}"):
+                        if st.button("Usar nesta Sessão", key=f"btn_save_cred_trans_{idx_real_na_planilha}"):
                             if u_input and p_input:
                                 st.session_state['login_siiu'] = u_input
                                 st.session_state['senha_siiu'] = p_input
-                                st.success("Credenciais salvas na sessão!")
+                                st.success("Credenciais mantidas temporariamente na memória da sessão!")
                                 st.rerun()
                             else:
                                 st.error("Preencha usuário e senha.")
