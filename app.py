@@ -72,7 +72,7 @@ def get_secret(key, default=""):
 DEFAULT_CONFIG = {
     "1agccixes8ld6ecxGavMOxEd0R4Efnp6lDtruJ2tjOUM": {
         "name": "Requisição de Passe Escolar - EMTU UNIFESP (respostas)",
-        "aba": "EMTU",
+        "aba": "Respostas ao formulário 1",
         "tipo": "EMTU - Requisição de Passe Escolar"
     },
     "1IUxi5NEoxcBn7y9s9euUcALmINoE29of7NkaLcYZUbk": {
@@ -102,7 +102,7 @@ DEFAULT_CONFIG = {
     },
     "11Te_uPZUBtW4qYI6-NHEBJN4DKTGOtexSpjMMV8A6wE": {
         "name": "Requisição de Passe Escolar  UNIFESP- SPTrans (respostas)",
-        "aba": "SPTRANS",
+        "aba": "Respostas ao formulário 1",
         "tipo": "SPTrans - Requisição de Passe Escolar"
     },
     "1V0dREdi3XmimuIu8u4YceqwJWDlQe7amfL6RkO2AeO0": {
@@ -466,24 +466,23 @@ def show_dashboard(config):
         atividades_por_ppg[ppg] = 0
     atividades_por_ppg["Não Identificado"] = 0
     
-    try:
-        for sheet_id, info in config.items():
-            tipo = info['tipo']
+    for sheet_id, info in config.items():
+        tipo = info.get('tipo', 'Outros')
+        if tipo not in atividades_por_tipo:
             atividades_por_tipo[tipo] = 0
             
-            data = get_sheet_data(sheet_id, info['aba'])
+        try:
+            data = get_sheet_data(sheet_id, info.get('aba', 'Respostas ao formulário 1'))
             if data and len(data) > 1:
                 header = data[0]
                 rows = data[1:]
                 
-                # Identificar coluna de data
                 data_col_index = None
                 for i, col in enumerate(header):
                     if "carimbo" in str(col).lower() or str(col).strip().lower() == "data":
                         data_col_index = i
                         break
                 
-                # Procurar pela coluna de PPG
                 ppg_col_index = None
                 for i, col in enumerate(header):
                     if "programa" in str(col).lower() or "ppg" in str(col).lower():
@@ -492,17 +491,14 @@ def show_dashboard(config):
                         
                 for row in rows:
                     row_padded = row + [''] * (len(header) - len(row))
-                    
-                    # Filtrar por data
                     valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
                     data_da_linha = parse_date_br(valor_data_completo)
                     
                     if filtro_selecao != "Desde o Início (Geral)":
                         if data_da_linha and data_inicio and data_fim:
                             if not (data_inicio <= data_da_linha <= data_fim):
-                                continue # Fora do filtro
+                                continue
                         elif not data_da_linha:
-                            # Se não encontrou data e não é filtro geral, esconde.
                             continue
                             
                     total_atividades += 1
@@ -512,7 +508,6 @@ def show_dashboard(config):
                         valor_ppg = str(row_padded[ppg_col_index]).strip()
                         encontrou = False
                         for ppg_oficial in PPGS_OFICIAIS:
-                            # Se encontrar o nome do PPG oficial na string preenchida
                             if ppg_oficial.lower() in valor_ppg.lower():
                                 atividades_por_ppg[ppg_oficial] += 1
                                 encontrou = True
@@ -521,6 +516,8 @@ def show_dashboard(config):
                             atividades_por_ppg["Não Identificado"] += 1
                     else:
                         atividades_por_ppg["Não Identificado"] += 1
+        except Exception as e_sheet:
+            print(f"Aviso ao carregar planilha '{tipo}': {e_sheet}")
                 
         st.divider()
         col1, col2 = st.columns(2)

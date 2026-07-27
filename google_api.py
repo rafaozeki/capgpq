@@ -78,14 +78,30 @@ def get_sheets():
     items = results.get('files', [])
     return items
 
-def get_sheet_data(spreadsheet_id, range_name='Página1'):
-    """Busca os dados de uma planilha e aba específicos."""
+def get_sheet_data(spreadsheet_id, range_name='Respostas ao formulário 1'):
+    """Busca os dados de uma planilha e aba específicos com fallback automático."""
     creds = get_credentials()
     service = build('sheets', 'v4', credentials=creds)
     sheet = service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
-    values = result.get('values', [])
-    return values
+    
+    clean_range = str(range_name).strip("'")
+    target_range = f"'{clean_range}'"
+    
+    try:
+        result = sheet.values().get(spreadsheetId=spreadsheet_id, range=target_range).execute()
+        return result.get('values', [])
+    except Exception as e:
+        try:
+            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = meta.get('sheets', [])
+            if sheets:
+                first_tab_name = sheets[0]['properties']['title']
+                fallback_range = f"'{first_tab_name}'"
+                result = sheet.values().get(spreadsheetId=spreadsheet_id, range=fallback_range).execute()
+                return result.get('values', [])
+        except Exception:
+            pass
+        raise e
 
 def col_num_to_letter(n):
     """Converte um índice de coluna (0 = A, 1 = B) para a letra correspondente"""
