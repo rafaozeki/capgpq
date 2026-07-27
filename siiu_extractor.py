@@ -180,21 +180,27 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
         selected = False
         
-        if programa == "Pós-Doutorado":
-            programa_busca = "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
-        else:
-            programa_busca = programa or ""
-
         import unicodedata
         def norm(txt):
             return "".join(c for c in unicodedata.normalize('NFD', str(txt).upper()) if unicodedata.category(c) != 'Mn').strip()
 
-        p_norm = norm(programa_busca)
+        prog_raw = (programa or "").strip()
+        p_norm = norm(prog_raw)
         
-        if p_norm and p_norm != "TODOS OS PROGRAMAS":
+        # Mapear de acordo com a tabela do usuário
+        mapped_target = None
+        for k, v in PPG_MAPPING_SIIU.items():
+            if k in p_norm or p_norm in k:
+                mapped_target = v
+                break
+                
+        target_name = mapped_target or prog_raw
+        t_norm = norm(target_name)
+        
+        if t_norm and t_norm != "TODOS OS PROGRAMAS":
             # 1. Tenta correspondência exata
             for option in select_programa.options:
-                if norm(option.text) == p_norm:
+                if norm(option.text) == t_norm:
                     select_programa.select_by_visible_text(option.text)
                     selected = True
                     break
@@ -204,7 +210,7 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
                 candidates_opt = []
                 for option in select_programa.options:
                     opt_norm = norm(option.text)
-                    if p_norm in opt_norm:
+                    if t_norm in opt_norm:
                         candidates_opt.append(option)
                 if candidates_opt:
                     best_opt = min(candidates_opt, key=lambda o: len(o.text))
