@@ -133,6 +133,12 @@ def save_json(data, filepath):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+@st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
+def init_cached_driver(login, senha):
+    import siiu_extractor
+    driver, erro = siiu_extractor.init_cached_driver(login, senha)
+    return driver, erro
+
 def extract_relevant_data(row_data, header):
     extracted = {}
     for col_name, value in zip(header, row_data):
@@ -801,12 +807,6 @@ def show_academic_analysis():
         )
         
     st.write("---")
-    
-    @st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
-    def init_cached_driver(login, senha):
-        import siiu_extractor
-        driver, erro = siiu_extractor.init_cached_driver(login, senha)
-        return driver, erro
 
     if st.button("Pesquisar no SIIU", type="primary"):
         if not login_siiu or not senha_siiu:
