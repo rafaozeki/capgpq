@@ -25,19 +25,29 @@ def get_credentials():
     except Exception:
         pass # Ignora erro caso o arquivo secrets.toml não exista localmente
         
-    # 1.5. Verifica se o token OAuth pessoal foi passado pelo st.secrets
+    # 1.5. Verifica se o token OAuth pessoal foi passado pelo st.secrets ou os.environ
+    token_str = None
     try:
         if "google_oauth_token" in st.secrets:
-            # secrets["google_oauth_token"] deve conter o JSON do credentials
-            token_info = json.loads(st.secrets["google_oauth_token"])
+            token_str = st.secrets["google_oauth_token"]
+        elif os.environ.get("google_oauth_token"):
+            token_str = os.environ.get("google_oauth_token")
+    except Exception:
+        token_str = os.environ.get("google_oauth_token")
+
+    if token_str:
+        try:
+            token_info = json.loads(token_str)
             creds = Credentials.from_authorized_user_info(token_info, SCOPES)
             
-            # Se expirou, tenta atualizar
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            return creds
-    except Exception:
-        pass
+            if creds:
+                if creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                if creds.valid:
+                    return creds
+        except Exception as e:
+            print(f"Erro ao autenticar via google_oauth_token: {e}")
+
 
     # 2. Caso contrário, usa o fluxo local (OAuth com credentials.json)
     creds = None
