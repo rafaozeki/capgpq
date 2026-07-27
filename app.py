@@ -981,6 +981,144 @@ def show_academic_analysis():
             st.write("Se os dados acima estiverem incompletos, copie o texto abaixo e envie para o desenvolvedor analisar:")
             st.code(f"URL: {resultado.get('debug_url', 'N/A')}\n\nPAGE_TEXT:\n{resultado.get('debug_text', 'N/A')}", language="text")
 
+def extract_transport_fields(row_padded, header):
+    """Extrai todos os campos relevantes da linha da planilha usando busca flexível por palavras-chave."""
+    def find_val(keywords, exclude=[]):
+        for i, col in enumerate(header):
+            c_low = str(col).lower().strip()
+            if any(kw in c_low for kw in keywords):
+                if not any(ex in c_low for ex in exclude):
+                    if i < len(row_padded):
+                        v = str(row_padded[i]).strip()
+                        if v:
+                            return v, str(col).strip(), i
+        return "", "", None
+
+    fields = {}
+    
+    # 1. Matrícula
+    val, col, idx = find_val(["matrícula", "matricula", "ra"])
+    fields['matricula'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 2. Nome
+    val, col, idx = find_val(["nome"], exclude=["programa", "curso", "mãe", "mae", "pai"])
+    fields['nome'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 3. CPF
+    val, col, idx = find_val(["cpf"])
+    fields['cpf'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 4. RG
+    val, col, idx = find_val(["rg", "rne", "identificação", "identificacao", "documento"], exclude=["órgão", "orgao", "emissor", "estado", "emissão", "emissao", "tipo"])
+    fields['rg'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 5. Órgão emissor
+    val, col, idx = find_val(["órgão", "orgao", "emissor"])
+    fields['orgao_emissor'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 6. Estado de emissão
+    val, col, idx = find_val(["estado de emissão", "estado de emissao", "uf de emissão", "uf de emissao", "uf emissão", "uf emissao"], exclude=["residência", "residencia"])
+    fields['uf_rg'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 7. Data de nascimento
+    val, col, idx = find_val(["nascimento", "data de nascimento"])
+    fields['nascimento'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 8. Término do Curso
+    val, col, idx = find_val(["término", "termino", "prazo", "conclusão", "conclusao"])
+    fields['termino_curso'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 9. Telefones
+    val, col, idx = find_val(["residencial", "fixo"])
+    fields['tel_res'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    val, col, idx = find_val(["celular", "zap", "whatsapp"])
+    fields['tel_cel'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 10. Email
+    val, col, idx = find_val(["e-mail", "email"])
+    fields['email'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 11. CEP
+    val, col, idx = find_val(["cep"])
+    fields['cep'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 12. Rua / Logradouro
+    val, col, idx = find_val(["logradouro", "rua", "endereço", "endereco"])
+    fields['rua'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 13. Número
+    val, col, idx = find_val(["número", "numero", "nº", "n°"], exclude=["matricula", "rg", "cpf", "documento", "telefone", "celular"])
+    fields['numero'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 14. Bairro
+    val, col, idx = find_val(["bairro"])
+    fields['bairro'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 15. Cidade
+    val, col, idx = find_val(["cidade", "município", "municipio"])
+    fields['cidade'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 16. Estado
+    val, col, idx = find_val(["estado", "uf"], exclude=["emissão", "emissao", "rg"])
+    fields['estado'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 17. Complemento
+    val, col, idx = find_val(["complemento"])
+    fields['complemento'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 18. Programa / PPG
+    val, col, idx = find_val(["programa", "ppg", "curso"])
+    fields['ppg'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    # 19. EMTU adicionais
+    val, col, idx = find_val(["frequência", "frequencia"])
+    fields['frequencia'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    val, col, idx = find_val(["período", "periodo", "turno"])
+    fields['periodo'] = {"val": val, "col_name": col, "col_idx": idx}
+
+    val, col, idx = find_val(["benefício", "beneficio", "tipo"])
+    fields['beneficio'] = {"val": val, "col_name": col, "col_idx": idx}
+    
+    val, col, idx = find_val(["situação", "situacao"], exclude=["cadastral"])
+    fields['situacao'] = {"val": val, "col_name": col, "col_idx": idx}
+
+    val, col, idx = find_val(["situação cadastral", "situacao cadastral"])
+    fields['sit_cadastral'] = {"val": val, "col_name": col, "col_idx": idx}
+
+    val, col, idx = find_val(["carimbo", "data do cadastro", "data de cadastro"])
+    fields['data_cadastro'] = {"val": val, "col_name": col, "col_idx": idx}
+
+    return fields
+
+def check_field_match(val_planilha, val_siiu, check_type="text"):
+    """Compara dois valores e retorna se batem (True/False)."""
+    if not val_planilha or not val_siiu:
+        return False
+    s1 = str(val_planilha).strip().upper()
+    s2 = str(val_siiu).strip().upper()
+    
+    if s1 == s2:
+        return True
+        
+    if check_type == "digits":
+        d1 = re.sub(r"\D", "", s1)
+        d2 = re.sub(r"\D", "", s2)
+        return d1 == d2 and len(d1) > 0
+
+    if check_type == "date":
+        p1 = parse_date_br(s1)
+        p2 = parse_date_br(s2)
+        if p1 and p2:
+            return p1 == p2
+
+    if len(s1) > 3 and len(s2) > 3:
+        if s1 in s2 or s2 in s1:
+            return True
+            
+    return False
+
 def show_demand_page(sheet_id, info):
     st.title(f"{info['tipo']}")
     
@@ -1101,6 +1239,202 @@ def show_demand_page(sheet_id, info):
                                                     st.rerun()
                                                 except Exception as err:
                                                     st.error(f"Erro ao salvar: {err}")
+
+            # ASSISTENTE DE BILHETE DE TRANSPORTE (EMTU / SPTRANS)
+            tipo_str = (str(info.get('tipo', '')) + " " + str(info.get('name', ''))).upper()
+            is_sptrans = "SPTRANS" in tipo_str
+            is_emtu = "EMTU" in tipo_str
+            is_transporte = is_sptrans or is_emtu
+
+            if is_transporte:
+                modulo_nome = "SPTrans" if is_sptrans else "EMTU"
+                st.divider()
+                st.markdown(f"### 🚌 Assistente de Conferência e Cadastro — **{modulo_nome}**")
+                
+                tf = extract_transport_fields(row_padded, header)
+                
+                # Botão para disparar conferência no SIIU
+                key_check_btn = f"btn_chk_{idx_real_na_planilha}"
+                state_key_res = f"siiu_res_{idx_real_na_planilha}"
+                
+                col_ac1, col_ac2 = st.columns([3, 2])
+                with col_ac1:
+                    if st.button(f"🔍 Conferir com SIIU & Gerar Sequência ({modulo_nome})", key=key_check_btn, type="primary"):
+                        nome_busca = tf['nome']['val'] or tf['cpf']['val'] or tf['matricula']['val']
+                        ppg_busca = tf['ppg']['val'] or "Todos os Programas"
+                        
+                        if not nome_busca:
+                            st.error("Não foi possível identificar o Nome, CPF ou Matrícula do aluno nesta linha da planilha.")
+                        else:
+                            with st.spinner(f"Conferindo histórico de '{nome_busca}' no SIIU..."):
+                                try:
+                                    import siiu_extractor
+                                    login_siiu = st.secrets.get("login_siiu", "")
+                                    senha_siiu = st.secrets.get("senha_siiu", "")
+                                    
+                                    cached_driver, err_drv = init_cached_driver(login_siiu, senha_siiu)
+                                    if err_drv or not cached_driver:
+                                        st.error(f"Erro de autenticação no SIIU: {err_drv}")
+                                    else:
+                                        s_res = siiu_extractor.search_student_candidates(login_siiu, senha_siiu, nome_busca, ppg_busca, cached_driver=cached_driver)
+                                        if s_res.get("status") == "error":
+                                            st.error(f"Erro ao buscar aluno no SIIU: {s_res.get('message')}")
+                                        else:
+                                            cands = s_res.get("candidates", [])
+                                            if len(cands) == 1:
+                                                ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, cands[0], True, True, cached_driver=cached_driver)
+                                                st.session_state[state_key_res] = ext_res
+                                                st.rerun()
+                                            elif len(cands) > 1:
+                                                st.session_state[f"cands_{idx_real_na_planilha}"] = cands
+                                                st.session_state[state_key_res] = None
+                                                st.rerun()
+                                            else:
+                                                st.error("Nenhum registro encontrado no SIIU.")
+                                except Exception as ex_siiu:
+                                    st.error(f"Erro na conferência do SIIU: {ex_siiu}")
+
+                # Se houver múltiplos candidatos pendentes
+                if st.session_state.get(f"cands_{idx_real_na_planilha}"):
+                    cands = st.session_state[f"cands_{idx_real_na_planilha}"]
+                    st.warning(f"⚠️ Encontramos **{len(cands)} registros** no SIIU. Selecione o vínculo desejado:")
+                    c_opts = {f"📌 {c['nome']} — {c['nivel']} em {c['curso']} (RA: {c['matricula']} | Situação: {c['situacao']} | Ingresso: {c['ingresso']})": c for c in cands}
+                    selected_c_lbl = st.radio("Vínculo:", list(c_opts.keys()), key=f"rad_cand_{idx_real_na_planilha}")
+                    selected_c_obj = c_opts[selected_c_lbl]
+                    
+                    if st.button("Confirmar Vínculo para Conferência", key=f"btn_conf_c_{idx_real_na_planilha}", type="primary"):
+                        with st.spinner("Extraindo dados do vínculo selecionado..."):
+                            try:
+                                import siiu_extractor
+                                login_siiu = st.secrets.get("login_siiu", "")
+                                senha_siiu = st.secrets.get("senha_siiu", "")
+                                cached_driver, err_drv = init_cached_driver(login_siiu, senha_siiu)
+                                ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, selected_c_obj, True, True, cached_driver=cached_driver)
+                                st.session_state[state_key_res] = ext_res
+                                st.session_state[f"cands_{idx_real_na_planilha}"] = None
+                                st.rerun()
+                            except Exception as ex_conf:
+                                st.error(f"Erro ao extrair vínculo: {ex_conf}")
+
+                # Exibir resultado da conferência
+                res_siiu = st.session_state.get(state_key_res)
+                if res_siiu and res_siiu.get("status") == "success":
+                    ainfo = res_siiu.get("aluno_info", {})
+                    st.markdown("#### 📊 Resultado da Conferência (Planilha vs. SIIU)")
+                    
+                    # Definição dos campos a conferir conforme solicitação do usuário
+                    if is_sptrans:
+                        check_specs = [
+                            ("MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                            ("TÉRMINO DO CURSO", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
+                            ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
+                            ("RG / Documento", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                            ("Órgão emissor RG", tf['orgao_emissor']['val'], ainfo.get('rg', ''), "text", tf['orgao_emissor']['col_name'], tf['orgao_emissor']['col_idx']),
+                            ("Estado de emissão RG", tf['uf_rg']['val'], ainfo.get('rg', ''), "text", tf['uf_rg']['col_name'], tf['uf_rg']['col_idx']),
+                            ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
+                            ("Data de nascimento", tf['nascimento']['val'], ainfo.get('nascimento', ''), "date", tf['nascimento']['col_name'], tf['nascimento']['col_idx']),
+                        ]
+                    else: # EMTU
+                        check_specs = [
+                            ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                            ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
+                            ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
+                            ("RG ou RNE", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                            ("Término do Curso", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
+                        ]
+                        
+                    # Tabela de Conferência
+                    table_rows_html = []
+                    for label_campo, val_plan, val_siiu, ctype, col_n, col_i in check_specs:
+                        is_ok = check_field_match(val_plan, val_siiu, check_type=ctype)
+                        status_str = "✅ Batendo" if is_ok else "⚠️ Divergência"
+                        color_bg = "#e6f4ea" if is_ok else "#fef7e0"
+                        
+                        st.markdown(f"""
+                        <div style="background-color: {color_bg}; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; border-left: 4px solid {'#34a853' if is_ok else '#fbbc04'};">
+                            <strong>{status_str} — {label_campo}:</strong><br/>
+                            📄 Planilha: <code>{val_plan or 'Vazio'}</code> | 🏛️ SIIU: <code>{val_siiu or 'Não informado'}</code>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if not is_ok and val_siiu and col_i is not None:
+                            btn_fix_k = f"btn_fix_{idx_real_na_planilha}_{col_i}"
+                            if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
+                                try:
+                                    update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
+                                    st.success("Planilha atualizada com sucesso! Recarregando...")
+                                    st.rerun()
+                                except Exception as e_upd:
+                                    st.error(f"Erro ao atualizar planilha: {e_upd}")
+                                    
+                    st.divider()
+                    st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
+                    st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
+                    
+                    if is_sptrans:
+                        # ORDEM SPTRANS: Matrícula, RG, CPF, Data de Nascimento, Telefone res., Telefone cel., E-mail, CEP, RUA, Número, Bairro, Cidade, Estado, Complemento.
+                        seq_sptrans = [
+                            ("1. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
+                            ("2. RG", tf['rg']['val'] or ainfo.get('rg', '')),
+                            ("3. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                            ("4. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
+                            ("5. Telefone Residencial", tf['tel_res']['val']),
+                            ("6. Telefone Celular", tf['tel_cel']['val']),
+                            ("7. Endereço de E-mail", tf['email']['val']),
+                            ("8. CEP", tf['cep']['val']),
+                            ("9. RUA (Logradouro)", tf['rua']['val']),
+                            ("10. Número", tf['numero']['val']),
+                            ("11. Bairro", tf['bairro']['val']),
+                            ("12. Cidade", tf['cidade']['val']),
+                            ("13. Estado", tf['estado']['val']),
+                            ("14. Complemento", tf['complemento']['val']),
+                        ]
+                        
+                        seq_cols = st.columns(2)
+                        for idx_seq, (l_seq, v_seq) in enumerate(seq_sptrans):
+                            with seq_cols[idx_seq % 2]:
+                                st.markdown(f"**{l_seq}:**")
+                                st.code(v_seq or "Não informado", language="text")
+                                
+                    else: # EMTU
+                        # ORDEM EMTU: CPF, Nome, RG, CEP, Programa de Pós-Graduação, Frequência, Período do curso, Término do curso.
+                        seq_emtu = [
+                            ("1. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                            ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
+                            ("3. RG", tf['rg']['val'] or ainfo.get('rg', '')),
+                            ("4. CEP", tf['cep']['val']),
+                            ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                            ("6. Frequência", tf['frequencia']['val']),
+                            ("7. Período do curso", tf['periodo']['val']),
+                            ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
+                        ]
+                        
+                        seq_cols = st.columns(2)
+                        for idx_seq, (l_seq, v_seq) in enumerate(seq_emtu):
+                            with seq_cols[idx_seq % 2]:
+                                st.markdown(f"**{l_seq}:**")
+                                st.code(v_seq or "Não informado", language="text")
+
+                        st.write("---")
+                        st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
+                        comp_emtu = [
+                            ("SITUAÇÃO", tf['situacao']['val']),
+                            ("Tipo de benefício", tf['beneficio']['val']),
+                            ("RUA", tf['rua']['val']),
+                            ("Número", tf['numero']['val']),
+                            ("Bairro", tf['bairro']['val']),
+                            ("Cidade", tf['cidade']['val']),
+                            ("Estado", tf['estado']['val']),
+                            ("Complemento", tf['complemento']['val']),
+                            ("Endereço de e-mail", tf['email']['val']),
+                            ("Situação cadastral", tf['sit_cadastral']['val']),
+                            ("Data do Cadastro", tf['data_cadastro']['val']),
+                        ]
+                        c_cols = st.columns(3)
+                        for idx_comp, (lc, vc) in enumerate(comp_emtu):
+                            with c_cols[idx_comp % 3]:
+                                st.markdown(f"**{lc}:**")
+                                st.code(vc or "Não informado", language="text")
 
     if count == 0:
         st.info("Nenhuma atividade encontrada para o filtro selecionado.")
