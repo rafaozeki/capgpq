@@ -13,7 +13,6 @@ import traceback
 import sys
 import os
 import glob
-import time
 import re
 try:
     import pdfplumber
@@ -27,7 +26,7 @@ def parse_pdf_data(pdf_path):
     
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            texto = "\\n".join(page.extract_text() or "" for page in pdf.pages)
+            texto = "\n".join(page.extract_text() or "" for page in pdf.pages)
             
         # Tentar extrair Dados Pessoais
         sexo_match = re.search(r"Sexo:\s*([A-Za-z]+)", texto, re.I)
@@ -106,7 +105,6 @@ def init_cached_driver(login, senha):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Otimizações de velocidade agressivas
     chrome_options.page_load_strategy = 'eager' # Não espera carregar scripts e CSS
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Desativa imagens
@@ -114,7 +112,6 @@ def init_cached_driver(login, senha):
     chrome_options.add_argument("--disable-infobars")
     chrome_options.add_argument("--disable-notifications")
     
-    # Configura pasta temporária de downloads
     download_dir = os.path.join(os.getcwd(), "temp_downloads")
     os.makedirs(download_dir, exist_ok=True)
     
@@ -126,7 +123,6 @@ def init_cached_driver(login, senha):
     }
     chrome_options.add_experimental_option("prefs", prefs)
     
-    # Inicializa o driver
     try:
         if sys.platform.startswith('linux'):
             chrome_options.binary_location = "/usr/bin/chromium"
@@ -137,7 +133,6 @@ def init_cached_driver(login, senha):
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
-        # Faz o login
         target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
         driver.get(target_url)
         
@@ -165,107 +160,73 @@ def init_cached_driver(login, senha):
     except Exception as e:
         return None, f"Erro ao iniciar Chrome ou logar: {e}"
 
-def extract_student_data(login, senha, query, programa, baixar_historico=False, baixar_comprovante=False, cached_driver=None):
+def search_student_candidates(login, senha, query, programa, cached_driver=None):
     """
-    Executa a extração de dados do SIIU via Selenium.
+    Realiza a pesquisa de discente no SIIU e retorna a lista de TODOS os candidatos/vínculos encontrados.
     """
-    download_dir = os.path.join(os.getcwd(), "temp_downloads")
-    os.makedirs(download_dir, exist_ok=True)
-    
-    # Limpa downloads antigos
-    for f in glob.glob(os.path.join(download_dir, "*.pdf")):
-        try: os.remove(f)
-        except: pass
-        
     driver = cached_driver
-    
     if not driver:
         driver, err = init_cached_driver(login, senha)
         if not driver:
             return {"status": "error", "message": err}
-            
+
     try:
-        # Volta para a tela inicial de discentes se já estiver logado
         target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
         if driver.current_url != target_url:
             driver.get(target_url)
         
-        # 3. Preencher os campos de busca
-        try:
-            # Aguarda a tabela/campos carregarem
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
-            )
-            
-            # Mapeamento especial para Pós-Doutorado
-            if programa == "Pós-Doutorado":
-                programa_busca = "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
-            else:
-                programa_busca = programa
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
+        )
+        
+        if programa == "Pós-Doutorado":
+            programa_busca = "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
+        else:
+            programa_busca = programa
 
-            if programa_busca != "Todos os Programas":
-                select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
-                # Seleciona pelo texto exato que recebemos do usuário
-                selected = False
-                # Tenta correspondência exata primeiro (ignorando espaços extras)
+        if programa_busca != "Todos os Programas":
+            select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
+            selected = False
+            for option in select_programa.options:
+                if programa_busca.upper() == option.text.strip().upper():
+                    select_programa.select_by_visible_text(option.text)
+                    selected = True
+                    break
+                    
+            if not selected:
                 for option in select_programa.options:
-                    if programa_busca.upper() == option.text.strip().upper():
+                    if programa_busca.upper() in option.text.upper():
                         select_programa.select_by_visible_text(option.text)
                         selected = True
                         break
                         
-                # Se não achou exato, tenta parcial
-                if not selected:
-                    for option in select_programa.options:
-                        # Evitar casar 'Letras' com 'Filosofia, Letras e Ciências Humanas' se houver outro mais específico
-                        if programa_busca.upper() in option.text.upper():
-                            select_programa.select_by_visible_text(option.text)
-                            selected = True
-                            break
-                            
-                if selected:
-                    # O site recarrega a página ao selecionar o programa! Aguardamos elemento ficar obsoleto ou reaparecer
-                    time.sleep(1)
-                    WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
-                    )
-            
-            # Buscaremos o input de busca (nome provável: descricao)
-            search_input = driver.find_element(By.XPATH, "//input[@name='descricao' or @id='descricao' or contains(@placeholder, 'Nome') or @type='text']")
-            search_input.clear()
-            search_input.send_keys(query)
-            
-            # Clica em Pesquisar (buscando o botão pelo texto)
-            btn_pesquisar = driver.find_element(By.XPATH, "//button[contains(text(), 'Pesquisar') or contains(., 'Pesquisar')]")
-            driver.execute_script("arguments[0].click();", btn_pesquisar)
-            
-            # Aguarda a tabela carregar, olhando por um link de histórico
-            try:
+            if selected:
+                time.sleep(1)
                 WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'historico/')] | //td[contains(text(), 'Nenhum')]"))
+                    EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
                 )
-            except:
-                time.sleep(2)
-        except Exception as e:
-            try:
-                page_text = driver.find_element(By.TAG_NAME, "body").text[:400]
-            except:
-                page_text = "N/A"
-            return {"status": "error", "message": f"Falha ao preencher a busca na página de discentes. URL: {driver.current_url}. Pagina: {page_text}. Erro: {e}"}
-            
-        # 4. Extrair resultados
+        
+        search_input = driver.find_element(By.XPATH, "//input[@name='descricao' or @id='descricao' or contains(@placeholder, 'Nome') or @type='text']")
+        search_input.clear()
+        search_input.send_keys(query)
+        
+        btn_pesquisar = driver.find_element(By.XPATH, "//button[contains(text(), 'Pesquisar') or contains(., 'Pesquisar')]")
+        driver.execute_script("arguments[0].click();", btn_pesquisar)
+        
         try:
-            # Tenta raspar a tabela que aparece
-            # Pelo log anterior, as colunas são: Matrícula, Nome, Curso, Ingresso, Nível, Situação
-            table_rows = driver.find_elements(By.XPATH, "//table//tbody/tr")
-            
-            if not table_rows or len(table_rows) == 0:
-                 return {"status": "error", "message": "Nenhum aluno encontrado ou a tabela demorou muito para carregar."}
-                 
-            # Extrai o primeiro resultado encontrado
-            first_row = table_rows[0]
-            cols = first_row.find_elements(By.TAG_NAME, "td")
-            
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'historico/')] | //td[contains(text(), 'Nenhum')]"))
+            )
+        except:
+            time.sleep(2)
+
+        table_rows = driver.find_elements(By.XPATH, "//table//tbody/tr")
+        if not table_rows or len(table_rows) == 0:
+            return {"status": "error", "message": "Nenhum aluno encontrado ou a tabela demorou muito para carregar."}
+
+        candidates = []
+        for idx, row in enumerate(table_rows):
+            cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) > 0:
                 matricula = cols[0].text.strip() if len(cols) > 0 else ""
                 nome = cols[1].text.strip() if len(cols) > 1 else ""
@@ -273,20 +234,65 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 ingresso = cols[3].text.strip() if len(cols) > 3 else ""
                 nivel = cols[4].text.strip() if len(cols) > 4 else ""
                 situacao = cols[5].text.strip() if len(cols) > 5 else ""
-            else:
-                return {"status": "error", "message": "A tabela retornada está vazia."}
                 
-            # Extrair o link do botão "Abrir Histórico" na mesma linha
-            try:
-                historico_btn = first_row.find_element(By.XPATH, ".//a[contains(@data-original-title, 'Histórico') or contains(@href, 'historico')]")
-                historico_url = historico_btn.get_attribute("href")
-            except:
-                historico_url = None
-                    
-        except Exception as e:
-            return {"status": "error", "message": f"Falha ao extrair dados da tabela. Erro: {e}"}
+                if "Nenhum registro" in nome or "Nenhum registro" in matricula:
+                    continue
 
-        # 5. Navegar para a página do Histórico e Baixar PDFs
+                try:
+                    historico_btn = row.find_element(By.XPATH, ".//a[contains(@data-original-title, 'Histórico') or contains(@href, 'historico')]")
+                    historico_url = historico_btn.get_attribute("href")
+                except:
+                    historico_url = None
+
+                candidates.append({
+                    "id": idx,
+                    "matricula": matricula,
+                    "nome": nome,
+                    "curso": curso,
+                    "ingresso": ingresso,
+                    "nivel": nivel,
+                    "situacao": situacao,
+                    "historico_url": historico_url
+                })
+
+        if not candidates:
+            return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
+
+        return {
+            "status": "success",
+            "candidates": candidates
+        }
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        return {"status": "error", "message": f"Erro crítico na busca: {str(e)}\n{error_trace}"}
+
+def extract_candidate_details(login, senha, candidate, baixar_historico=False, baixar_comprovante=False, cached_driver=None):
+    """
+    Navega até o histórico de um candidato específico e extrai seus dados completos e PDFs.
+    """
+    download_dir = os.path.join(os.getcwd(), "temp_downloads")
+    os.makedirs(download_dir, exist_ok=True)
+    
+    for f in glob.glob(os.path.join(download_dir, "*.pdf")):
+        try: os.remove(f)
+        except: pass
+        
+    driver = cached_driver
+    if not driver:
+        driver, err = init_cached_driver(login, senha)
+        if not driver:
+            return {"status": "error", "message": err}
+
+    try:
+        historico_url = candidate.get("historico_url")
+        matricula = candidate.get("matricula", "")
+        nome = candidate.get("nome", "")
+        curso = candidate.get("curso", "")
+        ingresso = candidate.get("ingresso", "")
+        nivel = candidate.get("nivel", "")
+        situacao = candidate.get("situacao", "")
+
         historico_dados = []
         html_info = {}
         pdf_historico_path = None
@@ -297,14 +303,11 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 driver.get(historico_url)
                 time.sleep(3)
                 
-                # Tentar extrair uma tabela de resumo do histórico
-                # Vamos pegar todas as tabelas e extrair a primeira que parecer ter disciplinas
                 try:
                     tabelas = driver.find_elements(By.TAG_NAME, "table")
                     if tabelas:
-                        # Extrai a primeira tabela como dicionário (forma simplificada)
                         rows = tabelas[0].find_elements(By.TAG_NAME, "tr")
-                        for r in rows[1:]: # Ignora cabeçalho
+                        for r in rows[1:]:
                             tds = r.find_elements(By.TAG_NAME, "td")
                             if len(tds) >= 5:
                                 historico_dados.append({
@@ -315,9 +318,8 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                                     "Créditos": tds[4].text.strip()
                                 })
                 except:
-                    pass # Se falhar a tabela, não impede o download
+                    pass
                     
-                # Extração baseada no texto completo da página web (como fazemos no PDF)
                 try:
                     page_text = driver.find_element(By.TAG_NAME, "body").text
                     
@@ -327,8 +329,6 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     ano_match = re.search(r"Ano:\s*([^\n]+)", page_text, re.I)
                     if ano_match: html_info['ano_tese'] = ano_match.group(1).strip()
                         
-                    # Aqui podemos ter cuidado, pois 'Situação:' pode casar com a situação do aluno.
-                    # Mas vamos tentar buscar a última situação da página ou a que vem perto da banca
                     sit_match = re.search(r"Situação(?:\s*da\s*Tese)?:\s*([^\n]+)", page_text, re.I)
                     if sit_match: html_info['situacao_tese'] = sit_match.group(1).strip()
                         
@@ -354,16 +354,13 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                 except:
                     pass
                 
-                # Função de Espera Inteligente
                 def esperar_download_concluir(pasta, tempo_maximo=15, arquivos_ignorados=[]):
                     tempo_inicial = time.time()
                     while time.time() - tempo_inicial < tempo_maximo:
                         pdfs_atuais = glob.glob(os.path.join(pasta, "*.pdf"))
-                        # Filtra arquivos novos
                         pdfs_novos = [p for p in pdfs_atuais if p not in arquivos_ignorados]
                         
                         if pdfs_novos:
-                            # Se não tem arquivo terminando em .crdownload (download em andamento do chrome)
                             arquivos_incompletos = glob.glob(os.path.join(pasta, "*.crdownload"))
                             if not arquivos_incompletos:
                                 return max(pdfs_novos, key=os.path.getctime)
@@ -371,24 +368,20 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                         time.sleep(0.5)
                     return None
                 
-                # Lista de PDFs existentes antes de iniciar (para não ler PDF antigo)
                 pdfs_antigos = glob.glob(os.path.join(download_dir, "*.pdf"))
                 
-                # Download Histórico
                 if baixar_historico:
                     try:
                         btn_imprimir = driver.find_element(By.XPATH, "//a[contains(@href, 'secretaria-imprimir')]")
                         href_imprimir = btn_imprimir.get_attribute("href")
-                        # Se abrir em nova aba, podemos simplesmente navegar para lá para forçar o download
                         driver.get(href_imprimir)
                         
                         pdf_historico_path = esperar_download_concluir(download_dir, tempo_maximo=15, arquivos_ignorados=pdfs_antigos)
                         if pdf_historico_path:
                             pdfs_antigos.append(pdf_historico_path)
                     except Exception as e:
-                        pass # Falha ao baixar
+                        pass
                         
-                # Download Comprovante
                 if baixar_comprovante:
                     try:
                         btn_comprov = driver.find_element(By.XPATH, "//a[contains(@href, 'comprovante-matricula')]")
@@ -399,14 +392,12 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
                     except Exception as e:
                         pass
             except Exception as e:
-                # O erro no acesso ao histórico não deve apagar os dados básicos
                 pass
 
-        # Faz o parse dos PDFs gerados se existirem
         pdf_info = {}
         if pdf_historico_path:
             pdf_info.update(parse_pdf_data(pdf_historico_path))
-        if pdf_comprovante_path and not pdf_info: # Se falhou histórico, tenta do comprovante
+        if pdf_comprovante_path and not pdf_info:
             pdf_info.update(parse_pdf_data(pdf_comprovante_path))
             
         pdf_info.update(html_info)
@@ -416,16 +407,16 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
             "ra": matricula,
             "programa": curso,
             "situacao_siiu": situacao,
-            "ingresso": pdf_info.get("ingresso_data", ingresso), # Usa a data se achou no PDF
+            "ingresso": pdf_info.get("ingresso_data", ingresso),
             "nivel": nivel
         }
         aluno_final.update(pdf_info)
 
-        debug_text_final = page_text[:2000] if 'page_text' in locals() else (debug_row_html if 'debug_row_html' in locals() else "Nenhum page_text capturado")
+        debug_text_final = page_text[:2000] if 'page_text' in locals() else "Nenhum page_text capturado"
         
         return {
             "status": "success",
-            "message": "Dados extraídos com sucesso da tabela de busca e do PDF.",
+            "message": "Dados extraídos com sucesso do candidato.",
             "aluno_info": aluno_final,
             "historico": historico_dados,
             "pdf_historico": pdf_historico_path,
@@ -436,8 +427,20 @@ def extract_student_data(login, senha, query, programa, baixar_historico=False, 
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        return {"status": "error", "message": f"Erro crítico na execução do robô: {str(e)}\n{error_trace}"}
+        return {"status": "error", "message": f"Erro crítico na extração do candidato: {str(e)}\n{error_trace}"}
     finally:
         if not cached_driver and driver:
             try: driver.quit()
             except: pass
+
+def extract_student_data(login, senha, query, programa, baixar_historico=False, baixar_comprovante=False, cached_driver=None):
+    """
+    Função legada: busca candidatos e extrai o primeiro por padrão.
+    """
+    res = search_student_candidates(login, senha, query, programa, cached_driver=cached_driver)
+    if res.get("status") == "error":
+        return res
+    candidates = res.get("candidates", [])
+    if not candidates:
+        return {"status": "error", "message": "Nenhum aluno encontrado."}
+    return extract_candidate_details(login, senha, candidates[0], baixar_historico=baixar_historico, baixar_comprovante=baixar_comprovante, cached_driver=cached_driver)

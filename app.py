@@ -750,33 +750,77 @@ def show_academic_analysis():
         driver, erro = siiu_extractor.init_cached_driver(login, senha)
         return driver, erro
 
-    if st.button("Pesquisar e Extrair Dados do SIIU", type="primary"):
+    if st.button("Pesquisar no SIIU", type="primary"):
         if not login_siiu or not senha_siiu:
             st.error("Por favor, insira suas credenciais do SIIU para permitir o acesso do robô.")
         elif not termo_busca:
             st.error("Por favor, digite o Nome, CPF ou RA do aluno.")
         else:
-            with st.spinner("Iniciando robô (Selenium)... Isso pode levar alguns segundos..."):
+            with st.spinner("Buscando discente(s) no SIIU... Aguarde..."):
                 try:
                     import siiu_extractor
                     cached_driver, erro_login = init_cached_driver(login_siiu, senha_siiu)
                     
                     if erro_login or not cached_driver:
-                        resultado = {"status": "error", "message": erro_login or "Falha crítica na sessão"}
+                        st.error(f"Erro ao autenticar no SIIU: {erro_login}")
                         init_cached_driver.clear()
                     else:
-                        resultado = siiu_extractor.extract_student_data(login_siiu, senha_siiu, termo_busca, programa, True, True, cached_driver=cached_driver)
-                    
-                    if resultado.get("status") == "error":
-                        st.error(f"O robô encontrou um problema: {resultado.get('message')}")
-                        st.session_state['resultado_siiu'] = None
-                    else:
-                        st.success("Raspagem concluída!")
-                        st.session_state['resultado_siiu'] = resultado
+                        search_res = siiu_extractor.search_student_candidates(login_siiu, senha_siiu, termo_busca, programa, cached_driver=cached_driver)
                         
+                        if search_res.get("status") == "error":
+                            st.error(f"O robô encontrou um problema: {search_res.get('message')}")
+                            st.session_state['siiu_candidatos'] = None
+                            st.session_state['resultado_siiu'] = None
+                        else:
+                            candidates = search_res.get("candidates", [])
+                            if len(candidates) == 1:
+                                with st.spinner("1 registro encontrado! Extraindo dados e baixando históricos..."):
+                                    res_ext = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, candidates[0], True, True, cached_driver=cached_driver)
+                                    if res_ext.get("status") == "error":
+                                        st.error(f"Erro na extração: {res_ext.get('message')}")
+                                        st.session_state['resultado_siiu'] = None
+                                    else:
+                                        st.success("Raspagem concluída com sucesso!")
+                                        st.session_state['resultado_siiu'] = res_ext
+                                st.session_state['siiu_candidatos'] = None
+                            else:
+                                st.session_state['siiu_candidatos'] = candidates
+                                st.session_state['resultado_siiu'] = None
+                                st.success(f"{len(candidates)} registros encontrados! Por favor, selecione qual vínculo deseja extrair abaixo.")
                 except Exception as e:
                     st.error(f"Ocorreu um erro durante a execução do robô: {e}")
+                    st.session_state['siiu_candidatos'] = None
                     st.session_state['resultado_siiu'] = None
+                    
+    # Se houver múltiplos candidatos pendentes de escolha
+    if st.session_state.get('siiu_candidatos'):
+        candidates = st.session_state['siiu_candidatos']
+        st.write("---")
+        st.warning(f"⚠️ Encontramos **{len(candidates)} registros** para a sua pesquisa. Escolha qual deseja extrair:")
+        
+        cand_options = {}
+        for c in candidates:
+            label = f"📌 {c['nome']} — {c['nivel']} em {c['curso']} (RA: {c['matricula']} | Situação: {c['situacao']} | Ingresso: {c['ingresso']})"
+            cand_options[label] = c
+            
+        selected_label = st.radio("Selecione o vínculo do aluno:", list(cand_options.keys()))
+        selected_cand = cand_options[selected_label]
+        
+        if st.button("Confirmar Seleção e Extrair Dados", type="primary"):
+            with st.spinner(f"Extraindo dados do registro selecionado (RA {selected_cand['matricula']})..."):
+                try:
+                    import siiu_extractor
+                    cached_driver, erro_login = init_cached_driver(login_siiu, senha_siiu)
+                    res_ext = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, selected_cand, True, True, cached_driver=cached_driver)
+                    if res_ext.get("status") == "error":
+                        st.error(f"Erro na extração: {res_ext.get('message')}")
+                    else:
+                        st.success("Raspagem concluída com sucesso!")
+                        st.session_state['resultado_siiu'] = res_ext
+                        st.session_state['siiu_candidatos'] = None
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao extrair registro selecionado: {e}")
                     
     # Exibir os dados extraídos se existirem no session_state
     if st.session_state.get('resultado_siiu'):
