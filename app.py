@@ -9,6 +9,23 @@ from google_api import get_sheets, get_sheet_data, update_sheet_cell
 
 CONFIG_FILE = 'config.json'
 
+PPG_MAPPING_SIIU = {
+    "CIENCIAS SOCIAIS": "CIÊNCIAS SOCIAIS",
+    "EDUCACAO": "EDUCAÇÃO",
+    "EDUCACAO E SAUDE": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
+    "EDUCACAO E SAUDE NA INFANCIA E NA ADOLESCENCIA": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
+    "EDUCACAO E SAUDE NA INFANCIA E ADOLESCENCIA": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
+    "FILOSOFIA": "FILOSOFIA",
+    "HISTORIA": "HISTÓRIA",
+    "HISTORIA DA ARTE": "HISTÓRIA DA ARTE",
+    "LETRAS": "LETRAS",
+    "PROFHISTORIA - MESTRADO PROFISSIONAL": "ENSINO DE HISTÓRIA",
+    "PROFHISTORIA - DOUTORADO PROFISSIONAL": "ENSINO DE HISTÓRIA",
+    "PROFHISTORIA": "ENSINO DE HISTÓRIA",
+    "ENSINO DE HISTORIA": "ENSINO DE HISTÓRIA",
+    "POS-DOUTORADO": "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
+}
+
 KEYWORDS = [
     "nome", "matrícula", "documento de identificação", "órgão emissor", 
     "estado de emissão", "data de emissão", "data de nascimento", "telefone", "celular", 
@@ -473,7 +490,6 @@ def show_dashboard(config):
         atividades_por_ppg[ppg] = 0
     atividades_por_ppg["Não Identificado"] = 0
 
-    from siiu_extractor import PPG_MAPPING_SIIU
     import unicodedata
     def norm(txt):
         return "".join(c for c in unicodedata.normalize('NFD', str(txt).upper()) if unicodedata.category(c) != 'Mn').strip()
