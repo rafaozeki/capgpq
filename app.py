@@ -60,6 +60,15 @@ html, body, [class*="css"]  {
 </style>
 """
 
+def get_secret(key, default=""):
+    """Retorna uma chave do st.secrets ou os.environ com segurança sem estourar erro caso secrets.toml não exista."""
+    try:
+        if hasattr(st, "secrets") and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
 def load_json(filepath):
     if os.path.exists(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
@@ -1253,6 +1262,28 @@ def show_demand_page(sheet_id, info):
                 
                 tf = extract_transport_fields(row_padded, header)
                 
+                # Tenta obter credenciais da sessão ou de secrets/ambiente com segurança
+                login_siiu = st.session_state.get('login_siiu', '') or get_secret('login_siiu', '')
+                senha_siiu = st.session_state.get('senha_siiu', '') or get_secret('senha_siiu', '')
+
+                if not login_siiu or not senha_siiu:
+                    st.info("🔑 **Informe suas credenciais do SIIU para habilitar a conferência automatizada:**")
+                    col_cr1, col_cr2, col_cr3 = st.columns([2, 2, 1])
+                    with col_cr1:
+                        u_input = st.text_input("Usuário SIIU:", value=login_siiu, key=f"usr_siiu_trans_{idx_real_na_planilha}")
+                    with col_cr2:
+                        p_input = st.text_input("Senha SIIU:", value=senha_siiu, type="password", key=f"pwd_siiu_trans_{idx_real_na_planilha}")
+                    with col_cr3:
+                        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                        if st.button("Salvar Credenciais", key=f"btn_save_cred_trans_{idx_real_na_planilha}"):
+                            if u_input and p_input:
+                                st.session_state['login_siiu'] = u_input
+                                st.session_state['senha_siiu'] = p_input
+                                st.success("Credenciais salvas na sessão!")
+                                st.rerun()
+                            else:
+                                st.error("Preencha usuário e senha.")
+                
                 # Botão para disparar conferência no SIIU
                 key_check_btn = f"btn_chk_{idx_real_na_planilha}"
                 state_key_res = f"siiu_res_{idx_real_na_planilha}"
@@ -1263,15 +1294,14 @@ def show_demand_page(sheet_id, info):
                         nome_busca = tf['nome']['val'] or tf['cpf']['val'] or tf['matricula']['val']
                         ppg_busca = tf['ppg']['val'] or "Todos os Programas"
                         
-                        if not nome_busca:
+                        if not login_siiu or not senha_siiu:
+                            st.error("Por favor, preencha suas credenciais do SIIU acima antes de conferir.")
+                        elif not nome_busca:
                             st.error("Não foi possível identificar o Nome, CPF ou Matrícula do aluno nesta linha da planilha.")
                         else:
                             with st.spinner(f"Conferindo histórico de '{nome_busca}' no SIIU..."):
                                 try:
                                     import siiu_extractor
-                                    login_siiu = st.secrets.get("login_siiu", "")
-                                    senha_siiu = st.secrets.get("senha_siiu", "")
-                                    
                                     cached_driver, err_drv = init_cached_driver(login_siiu, senha_siiu)
                                     if err_drv or not cached_driver:
                                         st.error(f"Erro de autenticação no SIIU: {err_drv}")
@@ -1306,8 +1336,6 @@ def show_demand_page(sheet_id, info):
                         with st.spinner("Extraindo dados do vínculo selecionado..."):
                             try:
                                 import siiu_extractor
-                                login_siiu = st.secrets.get("login_siiu", "")
-                                senha_siiu = st.secrets.get("senha_siiu", "")
                                 cached_driver, err_drv = init_cached_driver(login_siiu, senha_siiu)
                                 ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, selected_c_obj, True, True, cached_driver=cached_driver)
                                 st.session_state[state_key_res] = ext_res
