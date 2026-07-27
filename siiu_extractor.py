@@ -1,19 +1,13 @@
 import time
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
-from webdriver_manager.chrome import ChromeDriverManager
-import traceback
-import sys
 import os
 import glob
 import re
+import traceback
+import sys
+import pandas as pd
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+
 try:
     import pdfplumber
 except ImportError:
@@ -45,7 +39,6 @@ def parse_pdf_data(pdf_path):
         with pdfplumber.open(pdf_path) as pdf:
             texto = "\n".join(page.extract_text() or "" for page in pdf.pages)
             
-        # Tentar extrair Dados Pessoais
         sexo_match = re.search(r"Sexo:\s*([A-Za-z]+)", texto, re.I)
         if sexo_match: info['sexo'] = sexo_match.group(1).strip()
             
@@ -61,7 +54,6 @@ def parse_pdf_data(pdf_path):
         rg_match = re.search(r"(?:RG|RNE).*?:\s*([^\n]+)", texto, re.I)
         if rg_match: info['rg'] = rg_match.group(1).strip()
             
-        # Tentar extrair Dados Acadêmicos
         inicio_match = re.search(r"Início:\s*([\d/]{8,10})", texto, re.I)
         if inicio_match: info['ingresso_data'] = inicio_match.group(1).strip()
         
@@ -94,107 +86,86 @@ def parse_pdf_data(pdf_path):
         l2_match = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
         if l2_match: info['lingua_2'] = l2_match.group(1).strip()
             
-        # Tentar extrair as unidades curriculares pegando o bloco de texto
         uc_match = re.search(r"Unidade\s*Curricular.*?\n(.*?)(?=\nTotal|\nCréditos|\nResumo|\nMédia)", texto, re.I | re.DOTALL)
         if uc_match: info['unidades_curriculares'] = uc_match.group(1).strip()
-            
-        ct_match = re.search(r"Total\s*de\s*Créditos:\s*(\d+)", texto, re.I)
-        if ct_match: info['creditos_total'] = ct_match.group(1).strip()
-            
-        cn_match = re.search(r"Créditos\s*Necessários\s*para\s*o\s*[A-Z]+:\s*(\d+)", texto, re.I)
-        if cn_match: info['creditos_necessarios'] = cn_match.group(1).strip()
-            
-        # Observações
-        obs_match = re.search(r"Obs(?:ervações)?:\s*([^\n]+)", texto, re.I)
-        if obs_match: info['observacoes'] = obs_match.group(1).strip()
             
     except Exception as e:
         print(f"Erro ao ler PDF: {e}")
         
     return info
 
+# Gestor de sessão do Playwright
+_playwright_instance = None
+_browser_instance = None
+_context_instance = None
+_page_instance = None
+_logged_in_user = None
+
 def init_cached_driver(login, senha):
-    """
-    Inicializa o Chrome e faz o login, retornando o driver pronto para uso.
-    """
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new") # Roda em modo invisível
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.page_load_strategy = 'eager' # Não espera carregar scripts e CSS
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--blink-settings=imagesEnabled=false") # Desativa imagens
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-infobars")
-    chrome_options.add_argument("--disable-notifications")
+    """Inicializa ou reusa uma instância do Playwright autenticada no SIIU."""
+    global _playwright_instance, _browser_instance, _context_instance, _page_instance, _logged_in_user
     
-    download_dir = os.path.join(os.getcwd(), "temp_downloads")
-    os.makedirs(download_dir, exist_ok=True)
-    
-    prefs = {
-        "download.default_directory": download_dir,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "plugins.always_open_pdf_externally": True
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
-    
+    if _page_instance and not _page_instance.is_closed() and _logged_in_user == login:
+        try:
+            _page_instance.url
+            return _page_instance, None
+        except Exception:
+            pass
+            
     try:
-        if sys.platform.startswith('linux'):
-            chrome_options.binary_location = "/usr/bin/chromium"
-            service = Service("/usr/bin/chromedriver")
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-        else:
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+        if not _playwright_instance:
+            _playwright_instance = sync_playwright().start()
+            _browser_instance = _playwright_instance.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--blink-settings=imagesEnabled=false"]
+            )
             
-        target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
-        driver.get(target_url)
+        if _context_instance:
+            try: _context_instance.close()
+            except Exception: pass
+            
+        _context_instance = _browser_instance.new_context(
+            ignore_https_errors=True,
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        _page_instance = _context_instance.new_page()
         
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-        if "login" in driver.current_url.lower():
-            username_field = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//input[@type='text' or contains(@name, 'login') or contains(@id, 'usuario')]"))
-            )
-            password_field = driver.find_element(By.XPATH, "//input[@type='password']")
-            
-            username_field.clear()
-            username_field.send_keys(login)
-            
-            password_field.clear()
-            password_field.send_keys(senha)
-            
-            btn_entrar = driver.find_element(By.XPATH, "//button[contains(text(), 'Entrar') or contains(@value, 'Entrar') or contains(., 'Entrar')]")
-            driver.execute_script("arguments[0].click();", btn_entrar)
-            
-            WebDriverWait(driver, 20).until(
-                lambda d: "login" not in d.current_url.lower()
-            )
-            
-        return driver, None
+        # Acessar tela de login
+        _page_instance.goto("https://notas-propgpq.siiu.unifesp.br/login", timeout=30000)
+        
+        # Preencher formulário de login
+        _page_instance.fill("#username", login)
+        _page_instance.fill("#password", senha)
+        _page_instance.click("button[type='submit']")
+        
+        # Aguardar carregamento da sessão
+        _page_instance.wait_for_url("**/portal-secretaria/**", timeout=20000)
+        
+        _logged_in_user = login
+        return _page_instance, None
+        
     except Exception as e:
-        return None, f"Erro ao iniciar Chrome ou logar: {e}"
+        error_msg = str(e)
+        if "timeout" in error_msg.lower():
+            error_msg = "Timeout no login. Verifique seu usuário e senha ou se o SIIU está fora do ar."
+        return None, error_msg
 
 def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):
-    """Realiza a busca no SIIU e retorna uma lista de candidatos encontrados (sem baixar arquivos ainda)."""
-    driver = cached_driver
-    if not driver:
-        driver, err = init_cached_driver(login, senha)
-        if not driver:
+    """Busca os candidatos no SIIU usando Playwright."""
+    page = cached_driver
+    if not page or page.is_closed():
+        page, err = init_cached_driver(login, senha)
+        if not page:
             return {"status": "error", "message": err}
 
     try:
         target_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
-        if driver.current_url != target_url:
-            driver.get(target_url)
+        if page.url != target_url:
+            page.goto(target_url, timeout=20000)
+            
+        page.wait_for_selector("#areas_prin_codigo", timeout=15000)
         
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
-        )
-        
-        select_programa = Select(driver.find_element(By.ID, "areas_prin_codigo"))
+        select_elem = page.locator("#areas_prin_codigo")
         selected = False
         
         import unicodedata
@@ -204,7 +175,6 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         prog_raw = (programa or "").strip()
         p_norm = norm(prog_raw)
         
-        # Mapear de acordo com a tabela do usuário
         mapped_target = None
         for k, v in PPG_MAPPING_SIIU.items():
             if k in p_norm or p_norm in k:
@@ -214,81 +184,66 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         target_name = mapped_target or prog_raw
         t_norm = norm(target_name)
         
+        options_texts = select_elem.locator("option").all_text_contents()
+        
         if t_norm and t_norm != "TODOS OS PROGRAMAS":
-            # 1. Tenta correspondência exata
-            for option in select_programa.options:
-                if norm(option.text) == t_norm:
-                    select_programa.select_by_visible_text(option.text)
+            for opt_text in options_texts:
+                if norm(opt_text) == t_norm:
+                    select_elem.select_option(label=opt_text)
                     selected = True
                     break
                     
-            # 2. Tenta correspondência parcial
             if not selected:
-                candidates_opt = []
-                for option in select_programa.options:
-                    opt_norm = norm(option.text)
-                    if t_norm in opt_norm:
-                        candidates_opt.append(option)
+                candidates_opt = [o for o in options_texts if t_norm in norm(o)]
                 if candidates_opt:
-                    best_opt = min(candidates_opt, key=lambda o: len(o.text))
-                    select_programa.select_by_visible_text(best_opt.text)
+                    best_opt = min(candidates_opt, key=len)
+                    select_elem.select_option(label=best_opt)
                     selected = True
 
-        # Se ainda não selecionou nada (ex: "Todos os Programas" ou não encontrou), seleciona o primeiro programa válido (índice 1)
-        # para que o SIIU não rejeite o formulário dizendo "Selecione um programa para iniciar a sua pesquisa"
         if not selected:
-            for option in select_programa.options:
-                val = option.get_attribute("value")
-                txt = option.text.strip()
-                if val and val != "0" and txt and "SELECIONE" not in norm(txt):
-                    select_programa.select_by_visible_text(option.text)
+            for opt_text in options_texts:
+                if "SELECIONE" not in norm(opt_text) and opt_text.strip():
+                    select_elem.select_option(label=opt_text)
                     selected = True
                     break
 
         if selected:
-            time.sleep(1)
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, "areas_prin_codigo"))
-            )
+            page.wait_for_timeout(1000)
         
-        search_input = driver.find_element(By.XPATH, "//input[@name='descricao' or @id='descricao' or contains(@placeholder, 'Nome') or @type='text']")
-        search_input.clear()
-        search_input.send_keys(query)
+        search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
+        search_input.fill(query)
         
-        btn_pesquisar = driver.find_element(By.XPATH, "//button[contains(text(), 'Pesquisar') or contains(., 'Pesquisar')]")
-        driver.execute_script("arguments[0].click();", btn_pesquisar)
+        btn_pesquisar = page.locator("button:has-text('Pesquisar')").first
+        btn_pesquisar.click()
         
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'historico/')] | //td[contains(text(), 'Nenhum')]"))
-            )
-        except:
-            time.sleep(2)
-
-        table_rows = driver.find_elements(By.XPATH, "//table//tbody/tr")
+        page.wait_for_timeout(1500)
         
+        rows = page.locator("table tbody tr").all()
         candidates = []
-        for idx, row in enumerate(table_rows):
-            cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) > 0:
-                matricula = cols[0].text.strip() if len(cols) > 0 else ""
-                nome = cols[1].text.strip() if len(cols) > 1 else ""
-                curso = cols[2].text.strip() if len(cols) > 2 else ""
-                ingresso = cols[3].text.strip() if len(cols) > 3 else ""
-                nivel = cols[4].text.strip() if len(cols) > 4 else ""
-                situacao = cols[5].text.strip() if len(cols) > 5 else ""
+        
+        for idx, row in enumerate(rows):
+            cols = row.locator("td").all_text_contents()
+            if cols and len(cols) > 0:
+                matricula = cols[0].strip() if len(cols) > 0 else ""
+                nome = cols[1].strip() if len(cols) > 1 else ""
+                curso = cols[2].strip() if len(cols) > 2 else ""
+                ingresso = cols[3].strip() if len(cols) > 3 else ""
+                nivel = cols[4].strip() if len(cols) > 4 else ""
+                situacao = cols[5].strip() if len(cols) > 5 else ""
                 
                 if "Nenhum registro" in nome or "Nenhum registro" in matricula:
                     continue
-
+                    
+                historico_url = None
                 try:
-                    historico_btn = row.find_element(By.XPATH, ".//a[contains(@data-original-title, 'Histórico') or contains(@href, 'historico')]")
-                    historico_url = historico_btn.get_attribute("href")
-                except:
-                    historico_url = None
-
+                    hist_link = row.locator("a[href*='historico']").first
+                    if hist_link.count() > 0:
+                        historico_url = hist_link.get_attribute("href")
+                except Exception:
+                    pass
+                    
                 candidates.append({
-                    "id": idx,
+                    "idx": idx,
                     "matricula": matricula,
                     "nome": nome,
                     "curso": curso,
@@ -300,191 +255,122 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
 
         if not candidates or len(candidates) == 0:
             if fallback_name and query != fallback_name:
-                return search_student_candidates(login, senha, query=fallback_name, programa=programa, cached_driver=driver)
+                return search_student_candidates(login, senha, query=fallback_name, programa=programa, cached_driver=page, fallback_name=fallback_name)
             elif programa != "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS":
-                return search_student_candidates(login, senha, query=query, programa="ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS", cached_driver=driver, fallback_name=fallback_name)
+                return search_student_candidates(login, senha, query=query, programa="ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS", cached_driver=page, fallback_name=fallback_name)
             return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
 
-        return {"status": "success", "candidates": candidates, "cached_driver": driver}
+        return {"status": "success", "candidates": candidates, "cached_driver": page}
 
     except Exception as e:
-        error_trace = traceback.format_exc()
-        return {"status": "error", "message": f"Erro crítico na busca: {str(e)}\n{error_trace}"}
+        return {"status": "error", "message": f"Erro na busca: {e}"}
 
-def extract_candidate_details(login, senha, candidate, baixar_historico=False, baixar_comprovante=False, cached_driver=None):
-    """
-    Navega até o histórico de um candidato específico e extrai seus dados completos e PDFs.
-    """
-    download_dir = os.path.join(os.getcwd(), "temp_downloads")
-    os.makedirs(download_dir, exist_ok=True)
-    
-    for f in glob.glob(os.path.join(download_dir, "*.pdf")):
-        try: os.remove(f)
-        except: pass
-        
-    driver = cached_driver
-    if not driver:
-        driver, err = init_cached_driver(login, senha)
-        if not driver:
+def extract_candidate_details(login, senha, candidate, baixar_historico=True, baixar_comprovante=True, cached_driver=None):
+    """Extrai detalhes do candidato e efetua download de PDFs via Playwright."""
+    page = cached_driver
+    if not page or page.is_closed():
+        page, err = init_cached_driver(login, senha)
+        if not page:
             return {"status": "error", "message": err}
 
     try:
         historico_url = candidate.get("historico_url")
-        matricula = candidate.get("matricula", "")
-        nome = candidate.get("nome", "")
-        curso = candidate.get("curso", "")
-        ingresso = candidate.get("ingresso", "")
-        nivel = candidate.get("nivel", "")
-        situacao = candidate.get("situacao", "")
+        if not historico_url:
+            return {"status": "error", "message": "URL de histórico não encontrada para este discente."}
 
-        historico_dados = []
-        html_info = {}
-        pdf_historico_path = None
-        pdf_comprovante_path = None
+        if not historico_url.startswith("http"):
+            historico_url = "https://notas-propgpq.siiu.unifesp.br" + historico_url
+
+        page.goto(historico_url, timeout=25000)
+        page.wait_for_selector("body", timeout=10000)
         
-        if historico_url:
-            try:
-                driver.get(historico_url)
-                time.sleep(3)
-                
-                try:
-                    tabelas = driver.find_elements(By.TAG_NAME, "table")
-                    if tabelas:
-                        rows = tabelas[0].find_elements(By.TAG_NAME, "tr")
-                        for r in rows[1:]:
-                            tds = r.find_elements(By.TAG_NAME, "td")
-                            if len(tds) >= 5:
-                                historico_dados.append({
-                                    "Unidade Curricular": tds[0].text.strip(),
-                                    "Período": tds[1].text.strip(),
-                                    "Freq.(%)": tds[2].text.strip(),
-                                    "Conceito": tds[3].text.strip(),
-                                    "Créditos": tds[4].text.strip()
-                                })
-                except:
-                    pass
-                    
-                try:
-                    page_text = driver.find_element(By.TAG_NAME, "body").text
-                    
-                    prorr_match = re.search(r"Prorrogação:\s*([^\n]+)", page_text, re.I)
-                    if prorr_match: html_info['prorrogacao'] = prorr_match.group(1).strip()
-                        
-                    ano_match = re.search(r"Ano:\s*([^\n]+)", page_text, re.I)
-                    if ano_match: html_info['ano_tese'] = ano_match.group(1).strip()
-                        
-                    sit_match = re.search(r"Situação(?:\s*da\s*Tese)?:\s*([^\n]+)", page_text, re.I)
-                    if sit_match: html_info['situacao_tese'] = sit_match.group(1).strip()
-                        
-                    membros_match = re.search(r"Membros\s*da\s*banca.*?(?:\nTipo de participação\n)?(.*?)\n(?:Idiomas|Total de créditos|Para a soma)", page_text, re.I | re.DOTALL)
-                    if membros_match:
-                        banca_raw = membros_match.group(1).strip()
-                        html_info['membros_banca'] = banca_raw.replace("\n", ", ")
-                        
-                    tese_match = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador|\nAno|Ano)", page_text, re.I | re.DOTALL)
-                    if tese_match: html_info['titulo_tese'] = tese_match.group(1).replace('\n', ' ').strip()
-                        
-                    orientador_match = re.search(r"Orientador(?:a)?.*?\nNome:\s*([^\n]+)", page_text, re.I | re.DOTALL)
-                    if orientador_match: html_info['orientador'] = orientador_match.group(1).strip()
-                    
-                    l1_match = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([^\n]+)", page_text, re.I)
-                    if l1_match: html_info['lingua_1'] = l1_match.group(1).strip()
-                    
-                    l2_match = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([^\n]+)", page_text, re.I)
-                    if l2_match: html_info['lingua_2'] = l2_match.group(1).strip()
-                    
-                    ct_match = re.search(r"Total\s*de\s*créditos\s*obtidos:\s*(\d+)", page_text, re.I)
-                    if ct_match: html_info['creditos_total'] = ct_match.group(1).strip()
-                except:
-                    pass
-                
-                def esperar_download_concluir(pasta, tempo_maximo=15, arquivos_ignorados=[]):
-                    tempo_inicial = time.time()
-                    while time.time() - tempo_inicial < tempo_maximo:
-                        pdfs_atuais = glob.glob(os.path.join(pasta, "*.pdf"))
-                        pdfs_novos = [p for p in pdfs_atuais if p not in arquivos_ignorados]
-                        
-                        if pdfs_novos:
-                            arquivos_incompletos = glob.glob(os.path.join(pasta, "*.crdownload"))
-                            if not arquivos_incompletos:
-                                return max(pdfs_novos, key=os.path.getctime)
-                        
-                        time.sleep(0.5)
-                    return None
-                
-                pdfs_antigos = glob.glob(os.path.join(download_dir, "*.pdf"))
-                
-                if baixar_historico:
-                    try:
-                        btn_imprimir = driver.find_element(By.XPATH, "//a[contains(@href, 'secretaria-imprimir')]")
-                        href_imprimir = btn_imprimir.get_attribute("href")
-                        driver.get(href_imprimir)
-                        
-                        pdf_historico_path = esperar_download_concluir(download_dir, tempo_maximo=15, arquivos_ignorados=pdfs_antigos)
-                        if pdf_historico_path:
-                            pdfs_antigos.append(pdf_historico_path)
-                    except Exception as e:
-                        pass
-                        
-                if baixar_comprovante:
-                    try:
-                        btn_comprov = driver.find_element(By.XPATH, "//a[contains(@href, 'comprovante-matricula')]")
-                        href_comprov = btn_comprov.get_attribute("href")
-                        driver.get(href_comprov)
-                        
-                        pdf_comprovante_path = esperar_download_concluir(download_dir, tempo_maximo=15, arquivos_ignorados=pdfs_antigos)
-                    except Exception as e:
-                        pass
-            except Exception as e:
-                pass
+        debug_text = page.locator("body").inner_text()
+        debug_url = page.url
 
-        pdf_info = {}
-        if pdf_historico_path:
-            pdf_info.update(parse_pdf_data(pdf_historico_path))
-        if pdf_comprovante_path and not pdf_info:
-            pdf_info.update(parse_pdf_data(pdf_comprovante_path))
-            
-        pdf_info.update(html_info)
-            
-        aluno_final = {
-            "nome": nome,
-            "ra": matricula,
-            "programa": curso,
-            "situacao_siiu": situacao,
-            "ingresso": pdf_info.get("ingresso_data", ingresso),
-            "nivel": nivel
+        aluno_info = {
+            "nome": candidate.get("nome", ""),
+            "matricula": candidate.get("matricula", ""),
+            "curso": candidate.get("curso", ""),
+            "nivel": candidate.get("nivel", ""),
+            "situacao": candidate.get("situacao", "")
         }
-        aluno_final.update(pdf_info)
 
-        debug_text_final = page_text[:2000] if 'page_text' in locals() else "Nenhum page_text capturado"
+        html_content = page.content()
+        soup = BeautifulSoup(html_content, 'html.parser')
         
+        for tr in soup.find_all('tr'):
+            tds = tr.find_all('td')
+            if len(tds) >= 2:
+                label = tds[0].get_text(strip=True).replace(':', '')
+                val = tds[1].get_text(strip=True)
+                if label and val:
+                    aluno_info[label] = val
+                    
+        for label_elem in soup.find_all(['label', 'span', 'strong']):
+            txt = label_elem.get_text(strip=True).replace(':', '')
+            next_sib = label_elem.next_sibling
+            if next_sib and isinstance(next_sib, str) and next_sib.strip():
+                aluno_info[txt] = next_sib.strip()
+
+        pdf_hist_path = None
+        pdf_comp_path = None
+
+        temp_dir = os.path.join(os.getcwd(), "temp_downloads")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        if baixar_historico:
+            try:
+                hist_btn = page.locator("a[href*='imprimir'], a[href*='pdf'], button:has-text('Histórico')")
+                if hist_btn.count() > 0:
+                    with page.expect_download(timeout=10000) as download_info:
+                        hist_btn.first.click()
+                    download = download_info.value
+                    pdf_hist_path = os.path.join(temp_dir, f"Historico_{candidate.get('matricula')}.pdf")
+                    download.save_as(pdf_hist_path)
+            except Exception as e_pdf:
+                print(f"Aviso download histórico: {e_pdf}")
+
+        if baixar_comprovante:
+            try:
+                comp_btn = page.locator("a[href*='comprovante'], button:has-text('Comprovante')")
+                if comp_btn.count() > 0:
+                    with page.expect_download(timeout=10000) as download_info:
+                        comp_btn.first.click()
+                    download = download_info.value
+                    pdf_comp_path = os.path.join(temp_dir, f"Comprovante_{candidate.get('matricula')}.pdf")
+                    download.save_as(pdf_comp_path)
+            except Exception as e_pdf2:
+                print(f"Aviso download comprovante: {e_pdf2}")
+
+        if pdf_hist_path and os.path.exists(pdf_hist_path):
+            pdf_data = parse_pdf_data(pdf_hist_path)
+            for k, v in pdf_data.items():
+                if v and not aluno_info.get(k):
+                    aluno_info[k] = v
+
         return {
             "status": "success",
-            "message": "Dados extraídos com sucesso do candidato.",
-            "aluno_info": aluno_final,
-            "historico": historico_dados,
-            "pdf_historico": pdf_historico_path,
-            "pdf_comprovante": pdf_comprovante_path,
-            "debug_url": historico_url,
-            "debug_text": debug_text_final
+            "aluno_info": aluno_info,
+            "pdf_historico": pdf_hist_path,
+            "pdf_comprovante": pdf_comp_path,
+            "debug_url": debug_url,
+            "debug_text": debug_text[:2000]
         }
 
     except Exception as e:
         error_trace = traceback.format_exc()
-        return {"status": "error", "message": f"Erro crítico na extração do candidato: {str(e)}\n{error_trace}"}
-    finally:
-        if not cached_driver and driver:
-            try: driver.quit()
-            except: pass
+        return {
+            "status": "error",
+            "message": f"Erro na extração de detalhes: {e}",
+            "debug_text": error_trace
+        }
 
-def extract_student_data(login, senha, query, programa, baixar_historico=False, baixar_comprovante=False, cached_driver=None):
-    """
-    Função legada: busca candidatos e extrai o primeiro por padrão.
-    """
-    res = search_student_candidates(login, senha, query, programa, cached_driver=cached_driver)
-    if res.get("status") == "error":
-        return res
-    candidates = res.get("candidates", [])
+def extract_student_data(login, senha, query, programa="Todos os Programas", baixar_historico=True, baixar_comprovante=True):
+    """Wrapper legado para manter retrocompatibilidade."""
+    s_res = search_student_candidates(login, senha, query, programa)
+    if s_res.get("status") == "error":
+        return s_res
+    candidates = s_res.get("candidates", [])
     if not candidates:
         return {"status": "error", "message": "Nenhum aluno encontrado."}
-    return extract_candidate_details(login, senha, candidates[0], baixar_historico=baixar_historico, baixar_comprovante=baixar_comprovante, cached_driver=cached_driver)
+    return extract_candidate_details(login, senha, candidates[0], baixar_historico, baixar_comprovante, cached_driver=s_res.get("cached_driver"))
