@@ -529,25 +529,12 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         base_url = current_url.split("?")[0].rstrip("/")
         pdf_imprimir_url = base_url if base_url.endswith("secretaria-imprimir") else f"{base_url}/secretaria-imprimir"
 
-        # 3. Clicar no botão 'Imprimir' (target="_blank") para abrir a aba do PDF e salvar o arquivo
+        # 3. Baixar o PDF a partir da página principal HTML (evita contexto chrome-extension da aba PDF)
         try:
-            close_sweetalert_overlays(page)
             pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-            
-            with page.context.expect_page(timeout=12000) as new_tab_info:
-                imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
-                if imprimir_btn.count() > 0:
-                    imprimir_btn.click(force=True)
-                else:
-                    page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
-                    
-            pdf_tab = new_tab_info.value
-            pdf_tab.wait_for_timeout(3000)
-            
-            # Obter os bytes reais do PDF da aba aberta e salvar em downloads/
-            pdf_b64 = pdf_tab.evaluate("""async () => {
+            pdf_b64 = page.evaluate("""async (pdfUrl) => {
                 try {
-                    const resp = await fetch(window.location.href);
+                    const resp = await fetch(pdfUrl);
                     const blob = await resp.blob();
                     return new Promise((res) => {
                         const reader = new FileReader();
@@ -555,7 +542,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                         reader.readAsDataURL(blob);
                     });
                 } catch(e) { return null; }
-            }""")
+            }""", pdf_imprimir_url)
             
             if pdf_b64:
                 import base64
@@ -563,10 +550,22 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 if b'%PDF' in pdf_bytes[:50]:
                     with open(pdf_historico_path, "wb") as f_pdf:
                         f_pdf.write(pdf_bytes)
-                        
-            pdf_tab.close()
+        except Exception as e_ev:
+            print(f"Aviso ao baixar PDF via page.evaluate: {e_ev}")
+
+        # 4. Abrir a aba visual do PDF para o usuário visualizar no Chrome
+        try:
+            close_sweetalert_overlays(page)
+            with page.context.expect_page(timeout=8000) as new_tab_info:
+                imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
+                if imprimir_btn.count() > 0:
+                    imprimir_btn.click(force=True)
+                else:
+                    page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
+            pdf_tab = new_tab_info.value
+            pdf_tab.wait_for_timeout(1500)
         except Exception as e_tab:
-            print(f"Aviso ao abrir nova aba de impressão: {e_tab}")
+            print(f"Aviso ao abrir nova aba visual de impressão: {e_tab}")
             
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
