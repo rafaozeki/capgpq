@@ -46,128 +46,153 @@ def close_sweetalert_overlays(page):
 
 def parse_pdf_data(pdf_path):
     info = {}
-    if not pdfplumber or not pdf_path or not os.path.exists(pdf_path):
+    if not pdf_path or not os.path.exists(pdf_path):
         return info
         
+    raw_texts = []
+    
+    # 1. Extração via pdfplumber (layout=False, layout=True e tabelas)
+    if pdfplumber:
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                for p in pdf.pages:
+                    t1 = p.extract_text(layout=False)
+                    if t1: raw_texts.append(t1)
+                    t2 = p.extract_text(layout=True)
+                    if t2: raw_texts.append(t2)
+                    
+                    try:
+                        tables = p.extract_tables()
+                        for tbl in tables:
+                            for r in tbl:
+                                if r:
+                                    raw_texts.append(" | ".join(str(c).strip() for c in r if c))
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Erro no pdfplumber: {e}")
+            
+    # 2. Fallback via pypdf
     try:
-        texto = ""
-        with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                t = page.extract_text(layout=False)
-                if t: texto += t + "\n"
+        import pypdf
+        reader = pypdf.PdfReader(pdf_path)
+        for p in reader.pages:
+            t = p.extract_text()
+            if t: raw_texts.append(t)
+    except Exception:
+        pass
 
-        # 1. Dados Pessoais e Acadêmicos do Cabeçalho
-        nome_m = re.search(r"Nome:\s*(.*?)(?=\n|Sexo:|Nasc|CPF)", texto, re.I)
-        if nome_m: info['nome'] = nome_m.group(1).strip()
-        
-        sexo_m = re.search(r"Sexo:\s*([^\s\n\t]+)", texto, re.I)
-        if sexo_m: info['sexo'] = sexo_m.group(1).strip()
-        
-        nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if nasc_m: info['nascimento'] = nasc_m.group(1).strip()
-        
-        nat_m = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°]|\s{2,})", texto, re.I)
-        if nat_m: info['naturalidade'] = nat_m.group(1).strip()
-        
-        cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", texto, re.I)
-        if not cpf_m:
-            cpf_m = re.search(r"CPF\s*nº\s*([\d\.\-]+)", texto, re.I)
-        if cpf_m: info['cpf'] = cpf_m.group(1).strip()
-        
-        rg_m = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", texto, re.I)
-        if not rg_m:
-            rg_m = re.search(r"RG\s*nº\s*([\d\.\-A-Za-z/]+)", texto, re.I)
-        if rg_m: info['rg'] = rg_m.group(1).strip()
-        
-        mat_m = re.search(r"N[ºo°]\s*da\s*Matricula:\s*([\d]+)", texto, re.I)
-        if mat_m: info['ra'] = mat_m.group(1).strip()
-        
-        ing_m = re.search(r"(?:Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if ing_m: info['ingresso'] = ing_m.group(1).strip()
-        
-        sit_m = re.search(r"Situação:\s*(.*?)(?=\s{2,}|\n|Término|Termino|Forma)", texto, re.I)
-        if sit_m:
-            v_sit = sit_m.group(1).strip()
-            info['situacao'] = v_sit
-            info['situacao_siiu'] = v_sit
-        
-        term_m = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if term_m: info['termino_previsto'] = term_m.group(1).strip()
-        
-        forma_m = re.search(r"Forma\s*de\s*Ingresso:\s*(.*?)(?=\s{2,}|\n|Homologação|Homologacao|Programa)", texto, re.I)
-        if forma_m: info['forma_ingresso'] = forma_m.group(1).strip()
-        
-        prog_m = re.search(r"Programa:\s*(.*?)(?=\s{2,}|\n|Nível|Nivel|Reconhecido)", texto, re.I)
-        if prog_m:
-            v_prog = prog_m.group(1).strip()
-            info['programa'] = v_prog
-            info['curso'] = v_prog
-        
-        niv_m = re.search(r"Nível:\s*([^\n]+)", texto, re.I)
-        if niv_m: info['nivel'] = niv_m.group(1).strip()
-        
-        homol_m = re.search(r"Homologação\s*do\s*Título:\s*(.*?)(?=\n|Programa:|Nível:|Título|\s{2,})", texto, re.I)
-        if homol_m: 
-            h_val = homol_m.group(1).strip()
-            info['homologacao'] = h_val if h_val else "Pendente"
-        
-        tese_m = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador|Defesa)", texto, re.I | re.DOTALL)
-        if tese_m: 
-            t_val = tese_m.group(1).replace("\n", " ").strip()
-            info['titulo_tese'] = t_val if t_val else "Não informado / Em andamento"
-        
-        orient_m = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\s{2,}|\n|Defesa|1[ºo°])", texto, re.I)
-        if orient_m: info['orientador'] = orient_m.group(1).replace("\n", " ").strip()
-        
-        defesa_m = re.search(r"Defesa:\s*(.*?)(?=\s{2,}|\n|1[ºo°]|2[ºo°]|$)", texto, re.I)
-        if defesa_m:
-            v_def = defesa_m.group(1).strip()
-            info['defesa'] = v_def if v_def else "Pendente / Em andamento"
-            
-        l1_m = re.search(r"1[ºo°]\s*Língua\s*Estrangeira:\s*(.*?)(?=\s{2,}|\n|2[ºo°]|Graduação|$)", texto, re.I)
-        if l1_m: 
-            l1_val = l1_m.group(1).strip()
-            info['lingua_1'] = l1_val if l1_val else "Pendente"
-        
-        l2_m = re.search(r"2[ºo°]\s*Língua\s*Estrangeira:\s*(.*?)(?=\s{2,}|\n|Graduação|Unidade|$)", texto, re.I)
-        if l2_m: 
-            l2_val = l2_m.group(1).strip()
-            info['lingua_2'] = l2_val if l2_val else "Pendente"
-        
-        cred_t_m = re.search(r"Total\s*de\s*créditos:\s*([\d]+)", texto, re.I)
-        if cred_t_m: info['creditos_total'] = cred_t_m.group(1).strip()
-        
-        cred_n_m = re.search(r"Créditos\s*necessários\s*para\s*o\s*(?:MESTRADO|DOUTORADO):\s*([\d]+)", texto, re.I)
-        if cred_n_m: info['creditos_necessarios'] = cred_n_m.group(1).strip()
+    texto_full = "\n".join(raw_texts)
+    if not texto_full.strip():
+        return info
 
-        # 2. Extração de Tabela de Disciplinas (Unidades Curriculares)
-        hist_disciplinas = []
-        lines = texto.split("\n")
-        in_uc = False
-        for line in lines:
-            if "Unidade Curricular" in line and "Ano" in line:
-                in_uc = True
-                continue
-            if in_uc:
-                if "Total de créditos" in line or "Legenda:" in line:
-                    in_uc = False
-                    break
-                m_uc = re.search(r"^(.*?)\s+([\d]{4})\s+([\d]{1,3})\s+([A-D])\s+([\d]+)$", line.strip())
-                if m_uc:
-                    hist_disciplinas.append({
-                        "Unidade Curricular": m_uc.group(1).strip(),
-                        "Ano": m_uc.group(2).strip(),
-                        "Frequência (%)": m_uc.group(3).strip(),
-                        "Conceito": m_uc.group(4).strip(),
-                        "Créditos": m_uc.group(5).strip()
-                    })
-        if hist_disciplinas:
-            info["historico"] = hist_disciplinas
-            
-    except Exception as e:
-        print(f"Erro ao ler PDF: {e}")
-    finally:
-        gc.collect()
+    texto_norm = re.sub(r'[ \t]+', ' ', texto_full)
+
+    # 1. Dados Pessoais e Acadêmicos do Cabeçalho
+    nome_m = re.search(r"Nome:\s*(.*?)(?=\n|Sexo:|Nasc|CPF|RG)", texto_norm, re.I)
+    if nome_m: info['nome'] = nome_m.group(1).strip()
+    
+    sexo_m = re.search(r"Sexo:\s*([^\s\n\t\|]+)", texto_norm, re.I)
+    if sexo_m: info['sexo'] = sexo_m.group(1).strip()
+    
+    nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
+    if nasc_m: info['nascimento'] = nasc_m.group(1).strip()
+    
+    nat_m = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°]|\s{2,}|\||$)", texto_norm, re.I)
+    if nat_m: info['naturalidade'] = nat_m.group(1).strip()
+    
+    cpf_m = re.search(r"(?:CPF|C\.P\.F\.)[\s:\ºn]*([\d\.\-]+)", texto_norm, re.I)
+    if not cpf_m:
+        cpf_m = re.search(r"\b(\d{3}\.\d{3}\.\d{3}\-\d{2})\b", texto_norm)
+    if cpf_m: info['cpf'] = cpf_m.group(1).strip()
+    
+    rg_m = re.search(r"(?:RG|RNE)[\s:\ºn]*([\d\.\-A-Za-z/]+)", texto_norm, re.I)
+    if rg_m: info['rg'] = rg_m.group(1).strip()
+    
+    mat_m = re.search(r"N[ºo°]\s*da\s*Matricula:\s*([\d]+)", texto_norm, re.I)
+    if mat_m: info['ra'] = mat_m.group(1).strip()
+    
+    ing_m = re.search(r"(?:Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
+    if ing_m: info['ingresso'] = ing_m.group(1).strip()
+    
+    sit_m = re.search(r"Situação:\s*(.*?)(?=\s{2,}|\n|Término|Termino|Forma|\||$)", texto_norm, re.I)
+    if sit_m:
+        v_sit = sit_m.group(1).strip()
+        info['situacao'] = v_sit
+        info['situacao_siiu'] = v_sit
+    
+    term_m = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
+    if term_m: info['termino_previsto'] = term_m.group(1).strip()
+    
+    forma_m = re.search(r"Forma\s*de\s*Ingresso:\s*(.*?)(?=\s{2,}|\n|Homologação|Homologacao|Programa|\||$)", texto_norm, re.I)
+    if forma_m: info['forma_ingresso'] = forma_m.group(1).strip()
+    
+    prog_m = re.search(r"Programa:\s*(.*?)(?=\s{2,}|\n|Nível|Nivel|Reconhecido|\||$)", texto_norm, re.I)
+    if prog_m:
+        v_prog = prog_m.group(1).strip()
+        info['programa'] = v_prog
+        info['curso'] = v_prog
+    
+    niv_m = re.search(r"Nível:\s*([^\n\|]+)", texto_norm, re.I)
+    if niv_m: info['nivel'] = niv_m.group(1).strip()
+    
+    homol_m = re.search(r"Homologação\s*do\s*Título:\s*(.*?)(?=\n|Programa:|Nível:|Título|\s{2,}|\||$)", texto_norm, re.I)
+    if homol_m: 
+        h_val = homol_m.group(1).strip()
+        info['homologacao'] = h_val if h_val else "Pendente"
+    
+    tese_m = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador|Defesa|\||$)", texto_norm, re.I | re.DOTALL)
+    if tese_m: 
+        t_val = tese_m.group(1).replace("\n", " ").strip()
+        info['titulo_tese'] = t_val if t_val else "Não informado / Em andamento"
+    
+    orient_m = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\s{2,}|\n|Defesa|1[ºo°]|\||$)", texto_norm, re.I)
+    if orient_m: info['orientador'] = orient_m.group(1).replace("\n", " ").strip()
+    
+    defesa_m = re.search(r"Defesa:\s*(.*?)(?=\s{2,}|\n|1[ºo°]|2[ºo°]|\||$)", texto_norm, re.I)
+    if defesa_m:
+        v_def = defesa_m.group(1).strip()
+        info['defesa'] = v_def if v_def else "Pendente / Em andamento"
+        
+    l1_m = re.search(r"1[ºo°]\s*Língua\s*Estrangeira:\s*(.*?)(?=\s{2,}|\n|2[ºo°]|Graduação|\||$)", texto_norm, re.I)
+    if l1_m: 
+        l1_val = l1_m.group(1).strip()
+        info['lingua_1'] = l1_val if l1_val else "Pendente"
+    
+    l2_m = re.search(r"2[ºo°]\s*Língua\s*Estrangeira:\s*(.*?)(?=\s{2,}|\n|Graduação|Unidade|\||$)", texto_norm, re.I)
+    if l2_m: 
+        l2_val = l2_m.group(1).strip()
+        info['lingua_2'] = l2_val if l2_val else "Pendente"
+    
+    cred_t_m = re.search(r"Total\s*de\s*créditos:\s*([\d]+)", texto_norm, re.I)
+    if cred_t_m: info['creditos_total'] = cred_t_m.group(1).strip()
+    
+    cred_n_m = re.search(r"Créditos\s*necessários\s*para\s*o\s*(?:MESTRADO|DOUTORADO):\s*([\d]+)", texto_norm, re.I)
+    if cred_n_m: info['creditos_necessarios'] = cred_n_m.group(1).strip()
+
+    # 2. Extração de Tabela de Disciplinas (Unidades Curriculares)
+    hist_disciplinas = []
+    lines = texto_norm.split("\n")
+    in_uc = False
+    for line in lines:
+        if "Unidade Curricular" in line and "Ano" in line:
+            in_uc = True
+            continue
+        if in_uc:
+            if "Total de créditos" in line or "Legenda:" in line:
+                in_uc = False
+                break
+            m_uc = re.search(r"^(.*?)\s+([\d]{4})\s+([\d]{1,3})\s+([A-D])\s+([\d]+)$", line.strip())
+            if m_uc:
+                hist_disciplinas.append({
+                    "Unidade Curricular": m_uc.group(1).strip(),
+                    "Ano": m_uc.group(2).strip(),
+                    "Frequência (%)": m_uc.group(3).strip(),
+                    "Conceito": m_uc.group(4).strip(),
+                    "Créditos": m_uc.group(5).strip()
+                })
+    if hist_disciplinas:
+        info["historico"] = hist_disciplinas
         
     return info
 

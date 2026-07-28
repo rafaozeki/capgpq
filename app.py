@@ -874,7 +874,6 @@ def show_academic_analysis():
     with col_busca1:
         termo_busca = st.text_input("Nome, CPF ou RA do aluno:")
     with col_busca2:
-        # Puxamos os programas dinamicamente se quisermos, ou deixamos estático por enquanto
         programa = st.selectbox(
             "Programa de Pós-Graduação (Obrigatório no SIIU):", 
             [
@@ -891,6 +890,32 @@ def show_academic_analysis():
                 "Pós-Doutorado"
             ]
         )
+
+    with st.expander("📄 Ou envie um arquivo PDF do Histórico Acadêmico para leitura instantânea", expanded=False):
+        uploaded_pdf = st.file_uploader("Selecione o arquivo PDF do Histórico Acadêmico do aluno:", type=["pdf"], key="uploader_pdf_direct")
+        if uploaded_pdf is not None:
+            if st.button("Analisar PDF Carregado", type="secondary"):
+                with st.spinner("Analisando PDF..."):
+                    import siiu_extractor
+                    download_dir = os.path.join(os.getcwd(), "downloads")
+                    os.makedirs(download_dir, exist_ok=True)
+                    temp_pdf_path = os.path.join(download_dir, f"Upload_{uploaded_pdf.name}")
+                    with open(temp_pdf_path, "wb") as f_up:
+                        f_up.write(uploaded_pdf.getbuffer())
+                    
+                    parsed_up = siiu_extractor.parse_pdf_data(temp_pdf_path)
+                    if parsed_up:
+                        st.success("✅ PDF analisado com sucesso!")
+                        st.session_state['resultado_siiu'] = {
+                            "status": "success",
+                            "aluno_info": parsed_up,
+                            "pdf_historico": temp_pdf_path,
+                            "historico": parsed_up.get("historico", [])
+                        }
+                        st.session_state['siiu_candidatos'] = None
+                        st.rerun()
+                    else:
+                        st.error("Não foi possível extrair dados do PDF enviado. Verifique se é o PDF oficial do Histórico Acadêmico do SIIU.")
         
     st.write("---")
 
