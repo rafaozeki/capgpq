@@ -68,7 +68,7 @@ def parse_pdf_data(pdf_path):
         ing_match = re.search(r"Ingresso:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if ing_match: info['ingresso'] = ing_match.group(1).strip()
             
-        term_match = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
+        term_match = re.search(r"Término\s*(?:Previsto)?:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if term_match: info['termino_previsto'] = term_match.group(1).strip()
             
         homol_match = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
@@ -287,17 +287,7 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
     return _run_with_playwright_page(login, senha, _task)
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
-    """Lógica interna de extração de detalhes em uma página já autenticada do Playwright."""
-    historico_url = candidate.get("historico_url")
-    if historico_url:
-        if not historico_url.startswith("http"):
-            historico_url = f"https://notas-propgpq.siiu.unifesp.br{historico_url if historico_url.startswith('/') else '/' + historico_url}"
-        try:
-            page.goto(historico_url, timeout=25000)
-            page.wait_for_timeout(2000)
-        except Exception as e_nav:
-            print(f"Aviso na navegação do histórico: {e_nav}")
-
+    """Lógica interna de extração de detalhes navegando, clicando ou baixando o PDF do Histórico."""
     aluno_info = {
         "matricula": candidate.get("matricula", ""),
         "ra": candidate.get("matricula", ""),
@@ -307,39 +297,112 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         "nivel": candidate.get("nivel", ""),
         "situacao": candidate.get("situacao", "")
     }
+    
+    pdf_historico_path = None
+    pdf_comprovante_path = None
+    
+    # 1. Se tivermos a URL direta do histórico
+    historico_url = candidate.get("historico_url")
+    navigated = False
+    
+    if historico_url:
+        if not historico_url.startswith("http"):
+            historico_url = f"https://notas-propgpq.siiu.unifesp.br{historico_url if historico_url.startswith('/') else '/' + historico_url}"
+        try:
+            with page.expect_download(timeout=8000) as download_info:
+                page.goto(historico_url, timeout=25000)
+            download = download_info.value
+            download_dir = os.path.join(os.getcwd(), "downloads")
+            os.makedirs(download_dir, exist_ok=True)
+            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+            download.save_as(pdf_historico_path)
+            navigated = True
+        except Exception:
+            try:
+                page.goto(historico_url, timeout=25000)
+                page.wait_for_timeout(2000)
+                navigated = True
+            except Exception as e_nav:
+                print(f"Aviso ao ir para historico_url: {e_nav}")
 
+    # 2. Se a navegação direta falhou ou não retornou dados, re-pesquisa e clica no elemento da tabela
+    if not navigated or len(page.locator("body").inner_text()) < 200:
+        try:
+            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
+            page.wait_for_selector("#areas_prin_codigo", timeout=15000)
+            
+            # Executa a busca pelo discente
+            search_res = _search_page_logic(page, aluno_info['ra'] or aluno_info['nome'], aluno_info.get('curso', ''))
+            
+            # Clica no link/botão do primeiro resultado
+            rows = page.locator("table tbody tr").all()
+            if rows:
+                row = rows[0]
+                click_target = row.locator("a, button, [onclick]").first
+                if click_target.count() > 0:
+                    try:
+                        with page.expect_download(timeout=8000) as dl_info:
+                            click_target.click(force=True)
+                        dl = dl_info.value
+                        download_dir = os.path.join(os.getcwd(), "downloads")
+                        os.makedirs(download_dir, exist_ok=True)
+                        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                        dl.save_as(pdf_historico_path)
+                    except Exception:
+                        try:
+                            with page.context.expect_page(timeout=8000) as new_p_info:
+                                click_target.click(force=True)
+                            new_page = new_p_info.value
+                            new_page.wait_for_timeout(2000)
+                            page = new_page
+                        except Exception:
+                            click_target.click(force=True)
+                            page.wait_for_timeout(2000)
+        except Exception as e_re:
+            print(f"Aviso no fallback de clique discente: {e_re}")
+
+    # 3. Extrair dados do PDF baixado se existir
+    if pdf_historico_path and os.path.exists(pdf_historico_path):
+        parsed_pdf = parse_pdf_data(pdf_historico_path)
+        for k, v in parsed_pdf.items():
+            if v:
+                aluno_info[k] = v
+
+    # 4. Complementar extraindo texto da página HTML
     try:
         body_text = page.locator("body").inner_text()
         
         cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", body_text, re.I)
-        if cpf_m: aluno_info["cpf"] = cpf_m.group(1).strip()
+        if cpf_m and not aluno_info.get("cpf"): aluno_info["cpf"] = cpf_m.group(1).strip()
         
         rg_m = re.search(r"RG:\s*([^\n]+)", body_text, re.I)
-        if rg_m: aluno_info["rg"] = rg_m.group(1).strip()
+        if rg_m and not aluno_info.get("rg"): aluno_info["rg"] = rg_m.group(1).strip()
         
         nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
-        if nasc_m: aluno_info["nascimento"] = nasc_m.group(1).strip()
+        if nasc_m and not aluno_info.get("nascimento"): aluno_info["nascimento"] = nasc_m.group(1).strip()
         
-        term_m = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
-        if term_m: aluno_info["termino_previsto"] = term_m.group(1).strip()
+        term_m = re.search(r"Término\s*(?:Previsto)?:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
+        if term_m and not aluno_info.get("termino_previsto"): aluno_info["termino_previsto"] = term_m.group(1).strip()
         
         homol_m = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
-        if homol_m: aluno_info["homologacao"] = homol_m.group(1).strip()
+        if homol_m and not aluno_info.get("homologacao"): aluno_info["homologacao"] = homol_m.group(1).strip()
         
         orient_m = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\nDefesa|Defesa)", body_text, re.I | re.DOTALL)
-        if orient_m: aluno_info["orientador"] = orient_m.group(1).replace("\n", " ").strip()
+        if orient_m and not aluno_info.get("orientador"): aluno_info["orientador"] = orient_m.group(1).replace("\n", " ").strip()
         
         l1_m = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", body_text, re.I)
-        if l1_m: aluno_info["lingua_1"] = l1_m.group(1).strip()
+        if l1_m and not aluno_info.get("lingua_1"): aluno_info["lingua_1"] = l1_m.group(1).strip()
         
         l2_m = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", body_text, re.I)
-        if l2_m: aluno_info["lingua_2"] = l2_m.group(1).strip()
+        if l2_m and not aluno_info.get("lingua_2"): aluno_info["lingua_2"] = l2_m.group(1).strip()
     except Exception as e_parse:
-        print(f"Aviso na extração de texto do discente: {e_parse}")
+        print(f"Aviso na extração HTML: {e_parse}")
 
     return {
         "status": "success",
-        "aluno_info": aluno_info
+        "aluno_info": aluno_info,
+        "pdf_historico": pdf_historico_path,
+        "pdf_comprovante": pdf_comprovante_path
     }
 
 def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
