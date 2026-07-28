@@ -344,7 +344,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         if u not in urls_to_try:
             urls_to_try.append(u)
 
-    # 1. Tenta acessar/baixar através das URLs da ação
+    # 1. Tenta acessar/baixar através das URLs da ação via requisição HTTP direta (ultrarrápida)
     for target_url in urls_to_try:
         if not target_url or target_url == "#":
             continue
@@ -352,37 +352,35 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
         
         try:
-            with page.expect_download(timeout=5000) as download_info:
-                page.goto(full_url, timeout=20000)
-            download = download_info.value
-            download_dir = os.path.join(os.getcwd(), "downloads")
-            os.makedirs(download_dir, exist_ok=True)
-            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-            download.save_as(pdf_historico_path)
-            if os.path.exists(pdf_historico_path):
+            req_res = page.request.get(full_url, timeout=6000)
+            c_type = str(req_res.headers.get("content-type", "")).lower()
+            
+            if "pdf" in c_type or full_url.lower().endswith(".pdf"):
+                download_dir = os.path.join(os.getcwd(), "downloads")
+                os.makedirs(download_dir, exist_ok=True)
+                pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                with open(pdf_historico_path, "wb") as f_pdf:
+                    f_pdf.write(req_res.body())
+                    
                 parsed = parse_pdf_data(pdf_historico_path)
                 if parsed.get("cpf") or parsed.get("rg"):
                     for k, v in parsed.items():
                         if v: aluno_info[k] = v
                     break
-        except Exception:
-            try:
-                page.goto(full_url, timeout=20000)
-                page.wait_for_timeout(1500)
-                b_text = page.locator("body").inner_text()
-                if "CPF" in b_text or "RG" in b_text:
+            else:
+                html_body = req_res.text()
+                cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", html_body, re.I)
+                rg_m = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", html_body, re.I)
+                if cpf_m or rg_m:
+                    if cpf_m: aluno_info["cpf"] = cpf_m.group(1).strip()
+                    if rg_m: aluno_info["rg"] = rg_m.group(1).strip()
                     break
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-    # 2. Se não conseguiu os dados via URL direta, re-pesquisa e clica nos botões da tabela
+    # 2. Se não conseguiu os dados via URL direta, clica no botão da tabela com timeout curto
     if not aluno_info.get("cpf") and not aluno_info.get("rg"):
         try:
-            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
-            page.wait_for_selector("#areas_prin_codigo", timeout=15000)
-            
-            search_res = _search_page_logic(page, aluno_info['ra'] or aluno_info['nome'], aluno_info.get('curso', ''))
-            
             rows = page.locator("table tbody tr").all()
             if rows:
                 row = rows[0]
@@ -391,7 +389,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 for click_target in clickables:
                     close_sweetalert_overlays(page)
                     try:
-                        with page.expect_download(timeout=5000) as dl_info:
+                        with page.expect_download(timeout=2500) as dl_info:
                             click_target.click(force=True)
                         dl = dl_info.value
                         download_dir = os.path.join(os.getcwd(), "downloads")
@@ -405,24 +403,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                                     if v: aluno_info[k] = v
                                 break
                     except Exception:
-                        try:
-                            with page.context.expect_page(timeout=5000) as new_p_info:
-                                click_target.click(force=True)
-                            new_page = new_p_info.value
-                            new_page.wait_for_timeout(2000)
-                            b_txt = new_page.locator("body").inner_text()
-                            if "CPF" in b_txt or "RG" in b_txt:
-                                page = new_page
-                                break
-                        except Exception:
-                            try:
-                                click_target.click(force=True)
-                                page.wait_for_timeout(1500)
-                                b_txt = page.locator("body").inner_text()
-                                if "CPF" in b_txt or "RG" in b_txt:
-                                    break
-                            except Exception:
-                                pass
+                        pass
         except Exception as e_re:
             print(f"Aviso no fallback de clique discente: {e_re}")
 
