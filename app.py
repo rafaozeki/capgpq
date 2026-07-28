@@ -1453,53 +1453,193 @@ def show_demand_page(sheet_id, info):
     
     st.divider()
     
-    st.write("📅 **Filtro de Período**")
-    f_col1, f_col2 = st.columns([2, 2])
+    hoje = datetime.now().date()
+
+    # Mapeamento prévio de linhas para relatórios, previsão e filtros simultâneos
+    all_tipos_solicitacao = set()
+    rows_parsed = []
+    
+    for reversed_idx, row in enumerate(reversed(rows)):
+        idx_real = len(rows) - reversed_idx + 1
+        row_padded = row + [''] * (len(header) - len(row))
+        data_linha, val_data_comp = get_row_date(row_padded, header)
+        rel_data = extract_relevant_data(row_padded, header)
+        
+        tipo_solic_val = ""
+        for k, v in rel_data.items():
+            if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
+                tipo_solic_val = str(v).strip()
+                if tipo_solic_val:
+                    all_tipos_solicitacao.add(tipo_solic_val)
+                    
+        data_exec_val = ""
+        data_exec_parsed = None
+        for k, v in rel_data.items():
+            if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
+                data_exec_val = str(v).strip()
+                data_exec_parsed = parse_date_br(data_exec_val)
+                
+        rows_parsed.append({
+            "idx_real": idx_real,
+            "row_padded": row_padded,
+            "data_linha": data_linha,
+            "val_data_comp": val_data_comp,
+            "rel_data": rel_data,
+            "tipo_solic": tipo_solic_val,
+            "data_exec_val": data_exec_val,
+            "data_exec_parsed": data_exec_parsed
+        })
+
+    st.write("🔍 **Filtros Avançados de Busca e Período**")
+    
+    f_col1, f_col2, f_col3 = st.columns(3)
     with f_col1:
         filtro_selecao = st.selectbox(
-            "Visualizar atividades de:", 
-            ["Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Todas as Atividades", "Escolher uma Data Específica"]
+            "1. Período de Solicitação:", 
+            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
         )
         
-    data_inicio, data_fim = None, None
-    hoje = datetime.now().date()
-    
+    tipos_opcoes = ["Todos os Tipos de Solicitação"] + sorted(list(all_tipos_solicitacao))
+    with f_col2:
+        filtro_tipo_solic = st.selectbox(
+            "2. Tipo de Solicitação:",
+            tipos_opcoes
+        )
+        
+    with f_col3:
+        filtro_execucao = st.selectbox(
+            "3. Data para Execução / Urgência:",
+            ["Todas as Datas de Execução", "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"]
+        )
+        
+    # Sub-filtros de data customizada se selecionados
+    data_inicio_solic, data_fim_solic = None, None
     if filtro_selecao == "Apenas Hoje":
-        data_inicio = hoje
-        data_fim = hoje
+        data_inicio_solic, data_fim_solic = hoje, hoje
     elif filtro_selecao == "Últimos 7 dias":
-        data_inicio = hoje - timedelta(days=7)
-        data_fim = hoje
+        data_inicio_solic, data_fim_solic = hoje - timedelta(days=7), hoje
     elif filtro_selecao == "Mês Atual":
-        data_inicio = hoje.replace(day=1)
-        data_fim = hoje
+        data_inicio_solic, data_fim_solic = hoje.replace(day=1), hoje
     elif filtro_selecao == "Últimos 6 meses":
-        # Início no 1º dia de 6 meses atrás
-        data_inicio = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1)
-        data_fim = hoje
-    elif filtro_selecao == "Escolher uma Data Específica":
-        with f_col2:
-            data_especifica = st.date_input("Selecione o dia:", value=hoje)
-            data_inicio = data_especifica
-            data_fim = data_especifica
-    
-    count = 0
-    # Processar de trás pra frente
-    for reversed_idx, row in enumerate(reversed(rows)):
-        idx_real_na_planilha = len(rows) - reversed_idx + 1 # +1 pq o cabeçalho é a linha 1
-        
-        row_padded = row + [''] * (len(header) - len(row))
-        
-        data_da_linha, valor_data_completo = get_row_date(row_padded, header)
-        
+        data_inicio_solic, data_fim_solic = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1), hoje
+    elif filtro_selecao == "Escolher Período Customizado":
+        cf_c1, cf_c2 = st.columns(2)
+        with cf_c1:
+            data_inicio_solic = st.date_input("Início da Solicitação:", value=hoje - timedelta(days=30))
+        with cf_c2:
+            data_fim_solic = st.date_input("Fim da Solicitação:", value=hoje)
+
+    data_inicio_exec, data_fim_exec = None, None
+    if filtro_execucao == "Escolher Período de Execução":
+        fe_c1, fe_c2 = st.columns(2)
+        with fe_c1:
+            data_inicio_exec = st.date_input("Início da Execução:", value=hoje)
+        with fe_c2:
+            data_fim_exec = st.date_input("Fim da Execução:", value=hoje + timedelta(days=30))
+
+    # Filtragem Simultânea das Demandas
+    filtered_items = []
+    for item in rows_parsed:
+        # A. Filtro por Período de Solicitação
         if filtro_selecao != "Todas as Atividades":
-            if data_da_linha and data_inicio and data_fim:
-                d_cmp = data_da_linha.date() if isinstance(data_da_linha, datetime) else data_da_linha
-                if not (data_inicio <= d_cmp <= data_fim):
+            d_l = item["data_linha"]
+            if d_l and data_inicio_solic and data_fim_solic:
+                d_cmp = d_l.date() if isinstance(d_l, datetime) else d_l
+                if not (data_inicio_solic <= d_cmp <= data_fim_solic):
                     continue
-            elif not data_da_linha:
+            elif not d_l:
                 continue
+
+        # B. Filtro por Tipo de Solicitação
+        if filtro_tipo_solic != "Todos os Tipos de Solicitação":
+            if item["tipo_solic"].strip().lower() != filtro_tipo_solic.strip().lower():
+                continue
+
+        # C. Filtro por Data para Execução / Urgência
+        d_ex = item["data_exec_parsed"]
+        if filtro_execucao == "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)":
+            if not d_ex:
+                continue
+            dias_r = (d_ex - hoje).days
+            if dias_r > 7:
+                continue
+        elif filtro_execucao == "⚠️ Médio Prazo (8 a 30 dias)":
+            if not d_ex:
+                continue
+            dias_r = (d_ex - hoje).days
+            if not (8 <= dias_r <= 30):
+                continue
+        elif filtro_execucao == "Escolher Período de Execução":
+            if d_ex and data_inicio_exec and data_fim_exec:
+                if not (data_inicio_exec <= d_ex <= data_fim_exec):
+                    continue
+            elif not d_ex:
+                continue
+
+        filtered_items.append(item)
+
+    # Painel de Relatório Completo & Previsão de Demandas
+    with st.expander("📊 Relatório Completo & Previsão de Demandas (Clique para expandir)", expanded=False):
+        st.write("### 📈 Painel Executivo e Previsão de Demandas")
+        st.caption("Gere um relatório abrangente contendo todas as informações da planilha no período e tipo selecionados.")
+        
+        col_rep1, col_rep2, col_rep3 = st.columns(3)
+        with col_rep1:
+            st.metric("Total de Demandas Filtradas", f"{len(filtered_items)} registro(s)")
             
+        urgentes_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days <= 7)
+        with col_rep2:
+            st.metric("Demandas Urgentes (<= 7 dias)", f"{urgentes_count} demanda(s)")
+            
+        medio_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 8 <= (it["data_exec_parsed"] - hoje).days <= 30)
+        with col_rep3:
+            st.metric("Demandas Médio Prazo (8-30 dias)", f"{medio_count} demanda(s)")
+
+        st.divider()
+        st.write("#### 📥 Exportar Relatório Completo (Contendo 100% das Informações da Planilha)")
+        
+        if filtered_items:
+            report_data = []
+            for it in filtered_items:
+                r_dict = {}
+                row_p = it["row_padded"]
+                for idx_c, col_name in enumerate(header):
+                    r_dict[str(col_name).strip()] = row_p[idx_c] if idx_c < len(row_p) else ""
+                
+                d_ex = it["data_exec_parsed"]
+                if d_ex:
+                    dias_r = (d_ex - hoje).days
+                    r_dict["[Previsão] Dias para Execução"] = dias_r
+                    r_dict["[Previsão] Nível de Urgência"] = "CRÍTICO (Vencida/Urgente)" if dias_r <= 7 else ("MÉDIO" if dias_r <= 30 else "REGULAR")
+                else:
+                    r_dict["[Previsão] Dias para Execução"] = "N/A"
+                    r_dict["[Previsão] Nível de Urgência"] = "Não informada"
+                    
+                report_data.append(r_dict)
+                
+            df_report = pd.DataFrame(report_data)
+            csv_bytes = df_report.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            
+            st.dataframe(df_report, use_container_width=True, height=250)
+            st.download_button(
+                label="📥 Baixar Relatório Completo (CSV / Excel)",
+                data=csv_bytes,
+                file_name=f"Relatorio_Demandas_{info['tipo'].replace(' ', '_')}_{hoje.strftime('%d_%m_%Y')}.csv",
+                mime="text/csv",
+                type="primary",
+                key=f"btn_dl_report_{sheet_id}"
+            )
+        else:
+            st.info("Nenhuma demanda encontrada com a combinação atual de filtros.")
+
+    st.divider()
+
+    count = 0
+    # Processar de trás pra frente as demandas filtradas
+    for item in filtered_items:
+        idx_real_na_planilha = item["idx_real"]
+        row_padded = item["row_padded"]
+        valor_data_completo = item["val_data_comp"]
         count += 1
         nome_col = next((c for c in header if "nome" in str(c).lower() and "programa" not in str(c).lower()), None)
         nome_val = row_padded[header.index(nome_col)] if nome_col else f"Solicitante (Linha {idx_real_na_planilha})"
