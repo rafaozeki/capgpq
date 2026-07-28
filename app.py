@@ -104,6 +104,28 @@ html, body, [class*="css"]  {
     border-radius: 6px;
     box-shadow: 0px 2px 4px rgba(23, 76, 51, 0.08);
 }
+
+/* Restauração das cores dos botões para o padrão UNIFESP Verde Escuro #174C33 com hover em Verde Folha #82bf24 */
+button[data-testid="stBaseButton-primary"], 
+button[data-testid="stBaseButton-secondary"], 
+div.stButton > button, 
+div.stDownloadButton > button {
+    background-color: #174C33 !important;
+    color: #ffffff !important;
+    border: 1px solid #174C33 !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+button[data-testid="stBaseButton-primary"]:hover, 
+button[data-testid="stBaseButton-secondary"]:hover, 
+div.stButton > button:hover, 
+div.stDownloadButton > button:hover {
+    background-color: #82bf24 !important;
+    color: #ffffff !important;
+    border-color: #82bf24 !important;
+}
 </style>
 """
 
@@ -133,9 +155,9 @@ DEFAULT_CONFIG = {
         "tipo": "Solicitações de Diplomas"
     },
     "1bvpgCyLUw8C7c_yX54EWe3CPv_5JsfMC-OdNJj3wYdg": {
-        "name": "Solicitação de Histórico Escolar - UNIFESP (respostas)",
+        "name": "Formulário SPTrans Estudante (respostas)",
         "aba": "Respostas ao formulário 1",
-        "tipo": "Históricos Acadêmicos"
+        "tipo": "SPTrans Estudante"
     },
     "1ourQvwY79sEVqvSB_ip7vKO0LrraAZk9F6sf6UB8Sjk": {
         "name": "SEI - DISCENTE - LIBERAÇÃO DE USUÁRIO EXTERNO (respostas)",
@@ -165,20 +187,18 @@ DEFAULT_CONFIG = {
 }
 
 def load_json(filepath):
-    config_data = dict(DEFAULT_CONFIG)
     if os.path.exists(filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            try:
-                user_data = json.load(f)
-                if isinstance(user_data, dict):
-                    config_data.update(user_data)
-            except json.JSONDecodeError:
-                pass
-    return config_data
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return DEFAULT_CONFIG.copy()
+    return DEFAULT_CONFIG.copy()
 
 def save_json(data, filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 @st.cache_resource(show_spinner="Autenticando no SIIU (apenas 1 vez por servidor)...")
 def init_cached_driver(login, senha):
@@ -186,12 +206,16 @@ def init_cached_driver(login, senha):
     driver, erro = siiu_extractor.init_cached_driver(login, senha)
     return driver, erro
 
-def extract_relevant_data(row_data, header):
+def extract_relevant_data(row, header):
     extracted = {}
-    for col_name, value in zip(header, row_data):
-        col_lower = str(col_name).lower()
+    row_padded = row + [''] * (len(header) - len(row))
+    for col, val in zip(header, row_padded):
+        col_clean = str(col).strip()
+        col_lower = col_clean.lower()
         if any(kw in col_lower for kw in KEYWORDS):
-            extracted[col_name] = value
+            val_clean = str(val).strip()
+            if val_clean:
+                extracted[col_clean] = val_clean
     return extracted
 
 def parse_date_br(date_str):
@@ -223,28 +247,31 @@ def check_password():
     if st.session_state.get("password_correct"):
         return True
 
-    st.markdown("<h2 style='text-align: center; color: #174C33;'>🔒 Acesso Restrito</h2>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #174C33; font-family: \"Merriweather\", serif; font-weight: 800; font-size: 2.0rem; margin-bottom: 0px;'>Painel de Controle - CAPGPQ - EFLCH</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #615c5c; font-size: 1.1rem; margin-top: 5px; margin-bottom: 25px;'>🔒 Acesso Restrito</h3>", unsafe_allow_html=True)
     
     try:
         senha_correta = st.secrets.get("app_password", "cafezinho")
     except Exception:
         senha_correta = "cafezinho"
         
-    with st.form("login_form"):
-        senha_digitada = st.text_input("Digite a senha para acessar o Automador CaPGPq-EFLCH:", type="password")
-        submit_btn = st.form_submit_button("Entrar", type="primary", use_container_width=True)
-        
-    if submit_btn or senha_digitada:
-        if senha_digitada == senha_correta:
-            st.session_state["password_correct"] = True
-            st.rerun()
-        else:
-            st.error("😕 Senha incorreta. Tente novamente.")
+    c1, c2, c3 = st.columns([1, 1.2, 1])
+    with c2:
+        with st.form("login_form"):
+            senha_digitada = st.text_input("Digite a senha de acesso ao Painel de Controle:", type="password")
+            submit_btn = st.form_submit_button("Entrar", use_container_width=True)
+            
+        if submit_btn or senha_digitada:
+            if senha_digitada == senha_correta:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("😕 Senha incorreta. Tente novamente.")
             
     return False
 
 def main():
-    st.set_page_config(page_title="Automador CaPGPq-EFLCH", page_icon="🎓", layout="wide")
+    st.set_page_config(page_title="Painel de Controle - CaPGPq-EFLCH", page_icon="🎓", layout="wide")
     
     # Exige a senha antes de renderizar o resto do aplicativo
     if not check_password():
@@ -261,9 +288,10 @@ def main():
         """
         <div style="text-align: center; margin-bottom: 20px;">
             <h1 style="color: #174C33; font-family: 'Merriweather', serif; font-weight: 800; font-size: 2.2rem; margin-bottom: 0px;">UNIFESP</h1>
-            <p style="color: #615c5c; font-size: 0.95rem; margin-top: -10px;">Automador CaPGPq-EFLCH</p>
+            <p style="color: #615c5c; font-size: 0.95rem; margin-top: -10px;">Painel de Controle - CaPGPq-EFLCH</p>
         </div>
-        """, unsafe_allow_html=True
+        """,
+        unsafe_allow_html=True
     )
     
     # 1. Painel de Controle
@@ -863,24 +891,44 @@ def show_academic_analysis():
     
     st.divider()
     st.subheader("1. Credenciais do SIIU")
-    st.info("Suas credenciais não serão salvas. Elas são usadas apenas temporariamente para o robô acessar o sistema em seu nome.")
     
-    c_form, _ = st.columns([4, 1])
-    with st.form("form_login_siiu"):
-        c1, c2 = st.columns(2)
-        with c1:
-            login_siiu = st.text_input("Usuário:", value=st.session_state.get('login_siiu', ''))
-        with c2:
-            senha_siiu = st.text_input("Senha:", type="password", value=st.session_state.get('senha_siiu', ''))
-            
-        if st.form_submit_button("Efetuar Login / Atualizar Credenciais"):
-            if login_siiu and senha_siiu:
-                st.session_state['login_siiu'] = login_siiu
-                st.session_state['senha_siiu'] = senha_siiu
-                st.session_state['siiu_logged_in'] = True
-                st.success("✅ Credenciais informadas com sucesso! Você já pode realizar a busca.")
-            else:
-                st.warning("⚠️ Preencha usuário e senha para efetuar login.")
+    login_siiu = st.session_state.get('login_siiu', '')
+    senha_siiu = st.session_state.get('senha_siiu', '')
+    
+    if login_siiu and senha_siiu:
+        st.success("✅ Credenciais informadas com sucesso! Você já pode realizar a busca.")
+        with st.expander("🔑 Credenciais do SIIU (Clique para alterar usuário ou senha)", expanded=False):
+            with st.form("form_login_siiu_alt"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    u_alt = st.text_input("Usuário:", value=login_siiu)
+                with c2:
+                    p_alt = st.text_input("Senha:", type="password", value=senha_siiu)
+                if st.form_submit_button("Atualizar Credenciais"):
+                    if u_alt and p_alt:
+                        st.session_state['login_siiu'] = u_alt
+                        st.session_state['senha_siiu'] = p_alt
+                        st.success("Credenciais atualizadas com sucesso!")
+                        st.rerun()
+                    else:
+                        st.warning("Preencha usuário e senha.")
+    else:
+        st.info("Suas credenciais não serão salvas. Elas são usadas apenas temporariamente para o robô acessar o sistema em seu nome.")
+        with st.form("form_login_siiu"):
+            c1, c2 = st.columns(2)
+            with c1:
+                login_siiu = st.text_input("Usuário:", value="")
+            with c2:
+                senha_siiu = st.text_input("Senha:", type="password", value="")
+                
+            if st.form_submit_button("Efetuar Login / Salvar Credenciais"):
+                if login_siiu and senha_siiu:
+                    st.session_state['login_siiu'] = login_siiu
+                    st.session_state['senha_siiu'] = senha_siiu
+                    st.success("✅ Credenciais informadas com sucesso! Você já pode realizar a busca.")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Preencha usuário e senha para efetuar login.")
         
     st.divider()
     st.subheader("2. Busca de Aluno")
@@ -1579,15 +1627,28 @@ def show_demand_page(sheet_id, info):
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            if not is_ok and val_siiu and col_i is not None:
-                                btn_fix_k = f"btn_fix_{idx_real_na_planilha}_{col_i}"
-                                if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
-                                    try:
-                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
-                                        st.success("Planilha atualizada com sucesso! Recarregando...")
-                                        st.rerun()
-                                    except Exception as e_upd:
-                                        st.error(f"Erro ao atualizar planilha: {e_upd}")
+                            if not is_ok and val_siiu:
+                                if col_i is None and col_n:
+                                    for idx_h, col_h in enumerate(header):
+                                        if str(col_h).strip().lower() == str(col_n).strip().lower():
+                                            col_i = idx_h
+                                            break
+                                if col_i is None and ("término" in label_campo.lower() or "termino" in label_campo.lower()):
+                                    for idx_h, col_h in enumerate(header):
+                                        ch_low = str(col_h).lower()
+                                        if ("término" in ch_low or "termino" in ch_low or "conclusã" in ch_low) and "cadastramento" not in ch_low:
+                                            col_i = idx_h
+                                            break
+
+                                if col_i is not None:
+                                    btn_fix_k = f"btn_fix_{idx_real_na_planilha}_{col_i}"
+                                    if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
+                                        try:
+                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
+                                            st.success("Planilha atualizada com sucesso! Recarregando...")
+                                            st.rerun()
+                                        except Exception as e_upd:
+                                            st.error(f"Erro ao atualizar planilha: {e_upd}")
                                         
                         st.divider()
                         st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
