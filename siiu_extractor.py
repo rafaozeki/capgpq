@@ -611,7 +611,14 @@ def search_and_extract_student(login, senha, query, programa, cached_driver=None
             
         if len(candidates) == 1:
             ext_res = _extract_page_logic(page, candidates[0], True, True)
-            return {"status": "success", "single": True, "details": ext_res}
+            a_info = ext_res.get("aluno_info", {})
+            return {
+                "status": "success",
+                "single": True,
+                "details": ext_res,
+                "aluno_info": a_info,
+                "historico": a_info.get("historico", [])
+            }
         else:
             return {"status": "success", "single": False, "candidates": candidates}
             
