@@ -520,15 +520,16 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
         
         try:
-            req_res = page.request.get(full_url, timeout=6000)
+            req_res = page.request.get(full_url, timeout=10000)
             c_type = str(req_res.headers.get("content-type", "")).lower()
+            body_bytes = req_res.body()
             
-            if "pdf" in c_type or full_url.lower().endswith(".pdf"):
+            if "pdf" in c_type or full_url.lower().endswith(".pdf") or body_bytes[:4] == b'%PDF':
                 download_dir = os.path.join(os.getcwd(), "downloads")
                 os.makedirs(download_dir, exist_ok=True)
                 pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
                 with open(pdf_historico_path, "wb") as f_pdf:
-                    f_pdf.write(req_res.body())
+                    f_pdf.write(body_bytes)
                     
                 parsed = parse_pdf_data(pdf_historico_path)
                 if parsed:
@@ -537,14 +538,57 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     break
             else:
                 html_body = req_res.text()
-                cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", html_body, re.I)
-                rg_m = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", html_body, re.I)
-                if cpf_m or rg_m:
-                    if cpf_m: aluno_info["cpf"] = cpf_m.group(1).strip()
-                    if rg_m: aluno_info["rg"] = rg_m.group(1).strip()
+                pdf_links = []
+                
+                # 1. Procurar secretaria-imprimir (Histórico Acadêmico)
+                m_hist = re.findall(r'href=["\']([^"\']*secretaria-imprimir[^"\']*)["\']', html_body, re.I)
+                for h in m_hist:
+                    pdf_links.append((h, True))
+                    
+                # 2. Procurar comprovante-matricula (Comprovante)
+                m_comp = re.findall(r'href=["\']([^"\']*comprovante-matricula[^"\']*)["\']', html_body, re.I)
+                for h in m_comp:
+                    pdf_links.append((h, False))
+                    
+                # 3. Procurar quaisquer links de PDF/imprimir
+                m_any = re.findall(r'href=["\']([^"\']*(?:imprimir|pdf|historico)[^"\']*)["\']', html_body, re.I)
+                for h in m_any:
+                    if not any(h == pl[0] for pl in pdf_links) and h != full_url:
+                        pdf_links.append((h, True))
+                        
+                for pdf_link, is_hist in pdf_links:
+                    sub_url = pdf_link if pdf_link.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{pdf_link if pdf_link.startswith('/') else '/' + pdf_link}"
+                    try:
+                        sub_res = page.request.get(sub_url, timeout=10000)
+                        sub_bytes = sub_res.body()
+                        sub_ctype = str(sub_res.headers.get("content-type", "")).lower()
+                        
+                        if "pdf" in sub_ctype or sub_bytes[:4] == b'%PDF':
+                            download_dir = os.path.join(os.getcwd(), "downloads")
+                            os.makedirs(download_dir, exist_ok=True)
+                            
+                            fname = f"Historico_{aluno_info['ra']}.pdf" if is_hist else f"Comprovante_{aluno_info['ra']}.pdf"
+                            out_p = os.path.join(download_dir, fname)
+                            
+                            with open(out_p, "wb") as f_pdf:
+                                f_pdf.write(sub_bytes)
+                                
+                            if is_hist and not pdf_historico_path:
+                                pdf_historico_path = out_p
+                            elif not is_hist and not pdf_comprovante_path:
+                                pdf_comprovante_path = out_p
+                                
+                            parsed = parse_pdf_data(out_p)
+                            if parsed:
+                                for k, v in parsed.items():
+                                    if v: aluno_info[k] = v
+                    except Exception as e_sub:
+                        print(f"Erro ao baixar link de PDF sub-HTML {pdf_link}: {e_sub}")
+                        
+                if aluno_info.get("cpf") or aluno_info.get("rg"):
                     break
-        except Exception:
-            pass
+        except Exception as e_url:
+            print(f"Erro ao processar URL {full_url}: {e_url}")
 
     if not aluno_info.get("cpf") and not aluno_info.get("rg"):
         try:
