@@ -48,34 +48,28 @@ def parse_pdf_data(pdf_path):
     info = {}
     if not pdfplumber or not pdf_path or not os.path.exists(pdf_path):
         return info
-    
+        
     try:
+        texto = ""
         with pdfplumber.open(pdf_path) as pdf:
-            texto = "\n".join(page.extract_text() or "" for page in pdf.pages)
-            
-        sexo_match = re.search(r"Sexo:\s*([A-Za-z]+)", texto, re.I)
-        if sexo_match: info['sexo'] = sexo_match.group(1).strip()
-            
-        nasc_match = re.search(r"Nascimento:\s*([\d/]{8,10})", texto, re.I)
-        if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
-            
-        nat_match = re.search(r"Naturalidade:\s*([^\n]+)", texto, re.I)
-        if nat_match: info['naturalidade'] = nat_match.group(1).strip()
-            
-        cpf_match = re.search(r"CPF:\s*([\d\.-]+)", texto, re.I)
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t: texto += t + "\n"
+                
+        cpf_match = re.search(r"CPF:\s*([\d\.\-]+)", texto, re.I)
         if cpf_match: info['cpf'] = cpf_match.group(1).strip()
             
-        rg_match = re.search(r"(?:RG|RNE).*?:\s*([^\n]+)", texto, re.I)
+        rg_match = re.search(r"RG:\s*([^\n]+)", texto, re.I)
         if rg_match: info['rg'] = rg_match.group(1).strip()
             
-        inicio_match = re.search(r"Início:\s*([\d/]{8,10})", texto, re.I)
-        if inicio_match: info['ingresso_data'] = inicio_match.group(1).strip()
-        
-        term_match = re.search(r"Término\s*previsto:\s*([\d/]{8,10})", texto, re.I)
-        if term_match: info['termino_previsto'] = term_match.group(1).strip()
+        nasc_match = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
+        if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
             
-        forma_match = re.search(r"Forma\s*de\s*Ingresso:\s*([A-Za-z]+)", texto, re.I)
-        if forma_match: info['forma_ingresso'] = forma_match.group(1).strip()
+        ing_match = re.search(r"Ingresso:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
+        if ing_match: info['ingresso'] = ing_match.group(1).strip()
+            
+        term_match = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
+        if term_match: info['termino_previsto'] = term_match.group(1).strip()
             
         homol_match = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if homol_match: info['homologacao'] = homol_match.group(1).strip()
@@ -145,14 +139,22 @@ def _run_with_playwright_page(login, senha, task_fn):
             browser.close()
 
 def _search_page_logic(page, query, programa, fallback_name=None):
-    """Lógica interna de busca em uma página já autenticada do Playwright."""
+    """Lógica interna de busca com suporte inteligente a seleção de PPG e varredura de fallback."""
     page.wait_for_selector("#areas_prin_codigo", timeout=15000)
     select_elem = page.locator("#areas_prin_codigo")
-    selected = False
     
     import unicodedata
     def norm(txt):
         return "".join(c for c in unicodedata.normalize('NFD', str(txt).upper()) if unicodedata.category(c) != 'Mn').strip()
+
+    options_elements = select_elem.locator("option").all()
+    valid_options = []
+    for opt in options_elements:
+        txt = opt.inner_text().strip()
+        val = opt.get_attribute("value") or ""
+        txt_norm = norm(txt)
+        if txt and "SELECIONE" not in txt_norm and val not in ("0", ""):
+            valid_options.append((txt, val, txt_norm))
 
     prog_raw = (programa or "").strip()
     p_norm = norm(prog_raw)
@@ -166,109 +168,117 @@ def _search_page_logic(page, query, programa, fallback_name=None):
     target_name = mapped_target or prog_raw
     t_norm = norm(target_name)
     
-    options_texts = select_elem.locator("option").all_text_contents()
-    
+    selected_option = None
     if t_norm and t_norm != "TODOS OS PROGRAMAS":
-        for opt_text in options_texts:
-            if norm(opt_text) == t_norm:
-                select_elem.select_option(label=opt_text)
-                selected = True
+        for txt, val, txt_norm in valid_options:
+            if txt_norm == t_norm or t_norm in txt_norm or txt_norm in t_norm:
+                selected_option = (txt, val)
                 break
                 
-        if not selected:
-            candidates_opt = [o for o in options_texts if t_norm in norm(o)]
-            if candidates_opt:
-                best_opt = min(candidates_opt, key=len)
-                select_elem.select_option(label=best_opt)
-                selected = True
+    if not selected_option and valid_options:
+        selected_option = (valid_options[0][0], valid_options[0][1])
 
-    if not selected:
-        for opt_text in options_texts:
-            if "SELECIONE" not in norm(opt_text) and opt_text.strip():
-                select_elem.select_option(label=opt_text)
-                selected = True
-                break
+    visited_ppgs = set()
 
-    if selected:
-        page.wait_for_timeout(1000)
-    
-    close_sweetalert_overlays(page)
-    
-    search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
-    search_input.fill(query)
-    
-    close_sweetalert_overlays(page)
-    
-    btn_pesquisar = page.locator("button:has-text('Pesquisar')").first
-    try:
-        btn_pesquisar.click(force=True)
-    except Exception:
-        page.evaluate("el => el.click()", btn_pesquisar.element_handle())
-    
-    page.wait_for_timeout(1500)
-    
-    rows = page.locator("table tbody tr").all()
-    candidates = []
-    
-    for idx, row in enumerate(rows):
-        cols = row.locator("td").all_text_contents()
-        if cols and len(cols) > 0:
-            matricula = cols[0].strip() if len(cols) > 0 else ""
-            nome = cols[1].strip() if len(cols) > 1 else ""
-            curso = cols[2].strip() if len(cols) > 2 else ""
-            ingresso = cols[3].strip() if len(cols) > 3 else ""
-            nivel = cols[4].strip() if len(cols) > 4 else ""
-            situacao = cols[5].strip() if len(cols) > 5 else ""
-            
-            if "Nenhum registro" in nome or "Nenhum registro" in matricula:
-                continue
+    def do_search_in_option(opt_tuple, search_term):
+        opt_txt, opt_val = opt_tuple
+        try:
+            select_elem.select_option(value=opt_val)
+        except Exception:
+            select_elem.select_option(label=opt_txt)
+        page.wait_for_timeout(500)
+        
+        close_sweetalert_overlays(page)
+        
+        search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
+        search_input.fill(search_term)
+        
+        close_sweetalert_overlays(page)
+        
+        btn_pesquisar = page.locator("button:has-text('Pesquisar')").first
+        try:
+            btn_pesquisar.click(force=True)
+        except Exception:
+            page.evaluate("el => el.click()", btn_pesquisar.element_handle())
+        
+        page.wait_for_timeout(1200)
+        
+        rows = page.locator("table tbody tr").all()
+        found_cands = []
+        
+        for idx, row in enumerate(rows):
+            cols = row.locator("td").all_text_contents()
+            if cols and len(cols) > 0:
+                matricula = cols[0].strip() if len(cols) > 0 else ""
+                nome = cols[1].strip() if len(cols) > 1 else ""
+                curso = cols[2].strip() if len(cols) > 2 else ""
+                ingresso = cols[3].strip() if len(cols) > 3 else ""
+                nivel = cols[4].strip() if len(cols) > 4 else ""
+                situacao = cols[5].strip() if len(cols) > 5 else ""
                 
-            historico_url = None
-            try:
-                # 1. Procura em tags <a> (href ou onclick)
-                a_elems = row.locator("a").all()
-                for a_el in a_elems:
-                    h = a_el.get_attribute("href") or a_el.get_attribute("onclick") or a_el.get_attribute("data-href")
-                    if h and h != "#":
-                        if "location" in str(h) or "href" in str(h):
-                            m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
-                            if m: h = m.group(1)
-                        historico_url = h
-                        break
-                
-                # 2. Se não achou em <a>, procura em <button> ou elementos com onclick
-                if not historico_url:
-                    btn_elems = row.locator("button, [onclick], [data-href]").all()
-                    for btn_el in btn_elems:
-                        h = btn_el.get_attribute("onclick") or btn_el.get_attribute("data-href") or btn_el.get_attribute("href")
+                if "Nenhum registro" in nome or "Nenhum registro" in matricula or "Selecione um programa" in nome:
+                    continue
+                    
+                historico_url = None
+                try:
+                    a_elems = row.locator("a").all()
+                    for a_el in a_elems:
+                        h = a_el.get_attribute("href") or a_el.get_attribute("onclick") or a_el.get_attribute("data-href")
                         if h and h != "#":
                             if "location" in str(h) or "href" in str(h):
                                 m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
                                 if m: h = m.group(1)
                             historico_url = h
                             break
-            except Exception:
-                pass
-                
-            candidates.append({
-                "idx": idx,
-                "matricula": matricula,
-                "nome": nome,
-                "curso": curso,
-                "ingresso": ingresso,
-                "nivel": nivel,
-                "situacao": situacao,
-                "historico_url": historico_url
-            })
+                    if not historico_url:
+                        btn_elems = row.locator("button, [onclick], [data-href]").all()
+                        for btn_el in btn_elems:
+                            h = btn_el.get_attribute("onclick") or btn_el.get_attribute("data-href") or btn_el.get_attribute("href")
+                            if h and h != "#":
+                                if "location" in str(h) or "href" in str(h):
+                                    m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
+                                    if m: h = m.group(1)
+                                historico_url = h
+                                break
+                except Exception:
+                    pass
+                    
+                found_cands.append({
+                    "idx": idx,
+                    "matricula": matricula,
+                    "nome": nome,
+                    "curso": curso,
+                    "ingresso": ingresso,
+                    "nivel": nivel,
+                    "situacao": situacao,
+                    "historico_url": historico_url
+                })
+        return found_cands
 
-    if not candidates or len(candidates) == 0:
-        if fallback_name and query != fallback_name:
-            return _search_page_logic(page, fallback_name, programa, fallback_name=fallback_name)
-        elif programa != "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS":
-            return _search_page_logic(page, query, "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS", fallback_name=fallback_name)
-        return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
+    # 1. Pesquisa na opção de PPG principal
+    if selected_option:
+        visited_ppgs.add(selected_option[1])
+        cands = do_search_in_option(selected_option, query)
+        if cands:
+            return {"status": "success", "candidates": cands}
 
-    return {"status": "success", "candidates": candidates}
+    # 2. Varredura de fallback em todos os demais PPGs da instituição
+    for txt, val, _ in valid_options:
+        if val in visited_ppgs:
+            continue
+        visited_ppgs.add(val)
+        cands = do_search_in_option((txt, val), query)
+        if cands:
+            return {"status": "success", "candidates": cands}
+
+    # 3. Fallback adicional se query for RA/CPF e tivermos o Nome do aluno
+    if fallback_name and query != fallback_name:
+        for txt, val, _ in valid_options:
+            cands = do_search_in_option((txt, val), fallback_name)
+            if cands:
+                return {"status": "success", "candidates": cands}
+
+    return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
 
 def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):
     """Busca os candidatos no SIIU em um ambiente isolado de thread do Playwright."""
@@ -278,130 +288,62 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     """Lógica interna de extração de detalhes em uma página já autenticada do Playwright."""
+    historico_url = candidate.get("historico_url")
+    if historico_url:
+        if not historico_url.startswith("http"):
+            historico_url = f"https://notas-propgpq.siiu.unifesp.br{historico_url if historico_url.startswith('/') else '/' + historico_url}"
+        try:
+            page.goto(historico_url, timeout=25000)
+            page.wait_for_timeout(2000)
+        except Exception as e_nav:
+            print(f"Aviso na navegação do histórico: {e_nav}")
+
     aluno_info = {
-        "nome": candidate.get("nome", ""),
         "matricula": candidate.get("matricula", ""),
+        "ra": candidate.get("matricula", ""),
+        "nome": candidate.get("nome", ""),
         "curso": candidate.get("curso", ""),
+        "ingresso": candidate.get("ingresso", ""),
         "nivel": candidate.get("nivel", ""),
-        "situacao": candidate.get("situacao", ""),
-        "ingresso_data": candidate.get("ingresso", "")
+        "situacao": candidate.get("situacao", "")
     }
 
-    historico_url = candidate.get("historico_url")
-    
-    # Tentar buscar a URL se não tiver
-    if not historico_url:
-        try:
-            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=20000)
-            page.wait_for_selector("#areas_prin_codigo", timeout=10000)
-            close_sweetalert_overlays(page)
-            search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
-            search_input.fill(candidate.get("matricula", candidate.get("nome", "")))
-            btn_p = page.locator("button:has-text('Pesquisar')").first
-            btn_p.click(force=True)
-            page.wait_for_timeout(1500)
-            
-            first_a = page.locator("table tbody tr a, table tbody tr button").first
-            if first_a.count() > 0:
-                historico_url = first_a.get_attribute("href") or first_a.get_attribute("onclick")
-                if historico_url and ("location" in historico_url or "href" in historico_url):
-                    m = re.search(r"['\"]([^'\"]+)['\"]", historico_url)
-                    if m: historico_url = m.group(1)
-        except Exception:
-            pass
-
-    debug_text = ""
-    debug_url = page.url
-    pdf_hist_path = None
-    pdf_comp_path = None
-
-    if historico_url and historico_url != "#":
-        try:
-            if not historico_url.startswith("http"):
-                historico_url = "https://notas-propgpq.siiu.unifesp.br" + historico_url
-
-            page.goto(historico_url, timeout=25000)
-            page.wait_for_selector("body", timeout=10000)
-            close_sweetalert_overlays(page)
-            
-            debug_text = page.locator("body").inner_text()
-            debug_url = page.url
-
-            html_content = page.content()
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            for tr in soup.find_all('tr'):
-                tds = tr.find_all('td')
-                if len(tds) >= 2:
-                    label = tds[0].get_text(strip=True).replace(':', '')
-                    val = tds[1].get_text(strip=True)
-                    if label and val:
-                        aluno_info[label] = val
-                        
-            for label_elem in soup.find_all(['label', 'span', 'strong']):
-                txt = label_elem.get_text(strip=True).replace(':', '')
-                next_sib = label_elem.next_sibling
-                if next_sib and isinstance(next_sib, str) and next_sib.strip():
-                    aluno_info[txt] = next_sib.strip()
-
-            temp_dir = os.path.join(os.getcwd(), "temp_downloads")
-            os.makedirs(temp_dir, exist_ok=True)
-
-            if baixar_historico:
-                try:
-                    close_sweetalert_overlays(page)
-                    hist_btn = page.locator("a[href*='imprimir'], a[href*='pdf'], button:has-text('Histórico')")
-                    if hist_btn.count() > 0:
-                        with page.expect_download(timeout=10000) as download_info:
-                            hist_btn.first.click(force=True)
-                        download = download_info.value
-                        pdf_hist_path = os.path.join(temp_dir, f"Historico_{candidate.get('matricula')}.pdf")
-                        download.save_as(pdf_hist_path)
-                except Exception as e_pdf:
-                    print(f"Aviso download histórico: {e_pdf}")
-
-            if baixar_comprovante:
-                try:
-                    close_sweetalert_overlays(page)
-                    comp_btn = page.locator("a[href*='comprovante'], button:has-text('Comprovante')")
-                    if comp_btn.count() > 0:
-                        with page.expect_download(timeout=10000) as download_info:
-                            comp_btn.first.click(force=True)
-                        download = download_info.value
-                        pdf_comp_path = os.path.join(temp_dir, f"Comprovante_{candidate.get('matricula')}.pdf")
-                        download.save_as(pdf_comp_path)
-                except Exception as e_pdf2:
-                    print(f"Aviso download comprovante: {e_pdf2}")
-
-            if pdf_hist_path and os.path.exists(pdf_hist_path):
-                pdf_data = parse_pdf_data(pdf_hist_path)
-                for k, v in pdf_data.items():
-                    if v and not aluno_info.get(k):
-                        aluno_info[k] = v
-        except Exception as e_det:
-            print(f"Aviso na navegação detalhada do histórico: {e_det}")
+    try:
+        body_text = page.locator("body").inner_text()
+        
+        cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", body_text, re.I)
+        if cpf_m: aluno_info["cpf"] = cpf_m.group(1).strip()
+        
+        rg_m = re.search(r"RG:\s*([^\n]+)", body_text, re.I)
+        if rg_m: aluno_info["rg"] = rg_m.group(1).strip()
+        
+        nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
+        if nasc_m: aluno_info["nascimento"] = nasc_m.group(1).strip()
+        
+        term_m = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
+        if term_m: aluno_info["termino_previsto"] = term_m.group(1).strip()
+        
+        homol_m = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
+        if homol_m: aluno_info["homologacao"] = homol_m.group(1).strip()
+        
+        orient_m = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\nDefesa|Defesa)", body_text, re.I | re.DOTALL)
+        if orient_m: aluno_info["orientador"] = orient_m.group(1).replace("\n", " ").strip()
+        
+        l1_m = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", body_text, re.I)
+        if l1_m: aluno_info["lingua_1"] = l1_m.group(1).strip()
+        
+        l2_m = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", body_text, re.I)
+        if l2_m: aluno_info["lingua_2"] = l2_m.group(1).strip()
+    except Exception as e_parse:
+        print(f"Aviso na extração de texto do discente: {e_parse}")
 
     return {
         "status": "success",
-        "aluno_info": aluno_info,
-        "pdf_historico": pdf_hist_path,
-        "pdf_comprovante": pdf_comp_path,
-        "debug_url": debug_url,
-        "debug_text": debug_text[:2000]
+        "aluno_info": aluno_info
     }
 
-def extract_candidate_details(login, senha, candidate, baixar_historico=True, baixar_comprovante=True, cached_driver=None):
-    """Extrai detalhes do candidato em um ambiente isolado de thread do Playwright."""
+def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
+    """Extrai detalhes do candidato no SIIU."""
     def _task(page):
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
     return _run_with_playwright_page(login, senha, _task)
-
-def extract_student_data(login, senha, query, programa="Todos os Programas", baixar_historico=True, baixar_comprovante=True):
-    """Wrapper legado para manter retrocompatibilidade."""
-    s_res = search_student_candidates(login, senha, query, programa)
-    if s_res.get("status") == "error":
-        return s_res
-    candidates = s_res.get("candidates", [])
-    if not candidates:
-        return {"status": "error", "message": "Nenhum aluno encontrado."}
-    return extract_candidate_details(login, senha, candidates[0], baixar_historico, baixar_comprovante)
