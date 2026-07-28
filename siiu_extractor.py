@@ -465,175 +465,118 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     download_dir = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_dir, exist_ok=True)
 
-    for target_url in urls_to_try:
-        if not target_url or target_url == "#":
-            continue
-            
-        full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
+    # Pegar apenas a URL principal do histórico/discente para evitar navegações secundárias rápidas (404)
+    target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
+    if not target_url or target_url == "#":
+        return {
+            "status": "error",
+            "message": "URL do discente não encontrada."
+        }
         
+    full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
+    
+    download_dir = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_dir, exist_ok=True)
+
+    try:
+        # 1. Navegar via Chromium para a página principal de detalhes do discente
+        page.goto(full_url, timeout=25000, wait_until="domcontentloaded")
+        page.wait_for_timeout(1500)
+
+        # 2. Extrair dados da seção "Dados da Banca" diretamente do HTML da página do aluno
         try:
-            # 1. Tentar requisição HTTP direta caso a URL já seja do PDF
-            req_res = page.request.get(full_url, timeout=6000)
-            body_bytes = req_res.body()
-            c_type = str(req_res.headers.get("content-type", "")).lower()
+            html_text = page.locator("body").inner_text()
             
-            if "pdf" in c_type or full_url.lower().endswith(".pdf") or body_bytes[:4] == b'%PDF':
-                pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                with open(pdf_historico_path, "wb") as f_pdf:
-                    f_pdf.write(body_bytes)
-            else:
-                # 2. Navegar via Chromium para a página de detalhes do discente
-                try:
-                    page.goto(full_url, timeout=20000, wait_until="domcontentloaded")
-                    page.wait_for_timeout(1000)
-                except Exception:
-                    pass
-
-                # Extração dos dados da seção "Dados da Banca" diretamente da página HTML do discente
-                try:
-                    html_text = page.locator("body").inner_text()
-                    
-                    tese_html = re.search(r"(?:Título\s*da\s*Tese|Título\s*da\s*Dissertação)[\s:]*(.*?)(?=\n|Ano:|Orientador|Membros|Situação)", html_text, re.I)
-                    if tese_html and tese_html.group(1).strip():
-                        aluno_info['titulo_tese'] = tese_html.group(1).strip()
-                        
-                    ano_html = re.search(r"Ano[\s:]*([\d]{4})", html_text, re.I)
-                    if ano_html:
-                        aluno_info['ano_tese'] = ano_html.group(1).strip()
-                        
-                    membros_html = re.search(r"Membros\s*da\s*Banca[\s:]*(.*?)(?=\n|Homologação|Orientador|Situação)", html_text, re.I | re.DOTALL)
-                    if membros_html and membros_html.group(1).strip():
-                        aluno_info['membros_banca'] = membros_html.group(1).replace("\n", ", ").strip()
-                        
-                    sit_tese_html = re.search(r"Situação\s*da\s*Tese[\s:]*(.*?)(?=\n|Orientador|Homologação)", html_text, re.I)
-                    if sit_tese_html and sit_tese_html.group(1).strip():
-                        aluno_info['situacao_tese'] = sit_tese_html.group(1).strip()
-                        
-                    orient_html = re.search(r"Orientador[\(a\)]*[\s:]*(.*?)(?=\s{2,}|\n|Homologação|Defesa|Membros)", html_text, re.I)
-                    if orient_html and orient_html.group(1).strip():
-                        aluno_info['orientador'] = orient_html.group(1).strip()
-                        
-                    homol_html = re.search(r"Homologação\s*do\s*Título[\s:]*(.*?)(?=\n|1[ºo°]|Defesa|Orientador)", html_text, re.I)
-                    if homol_html and homol_html.group(1).strip():
-                        aluno_info['homologacao'] = homol_html.group(1).strip()
-                        
-                    l1_html = re.search(r"1[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|2[ºo°]|Defesa)", html_text, re.I)
-                    if l1_html and l1_html.group(1).strip():
-                        aluno_info['lingua_1'] = l1_html.group(1).strip()
-                        
-                    l2_html = re.search(r"2[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|Defesa|Membros)", html_text, re.I)
-                    if l2_html and l2_html.group(1).strip():
-                        aluno_info['lingua_2'] = l2_html.group(1).strip()
-                        
-                    defesa_html = re.search(r"Defesa[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
-                    if defesa_html:
-                        aluno_info['defesa'] = defesa_html.group(1).strip()
-                except Exception as e_html:
-                    print(f"Aviso ao ler HTML da banca: {e_html}")
-
-                current_url = page.url
-                base_url = current_url.split("?")[0].rstrip("/")
+            tese_html = re.search(r"(?:Título\s*da\s*Tese|Título\s*da\s*Dissertação)[\s:]*(.*?)(?=\n|Ano:|Orientador|Membros|Situação)", html_text, re.I)
+            if tese_html and tese_html.group(1).strip():
+                aluno_info['titulo_tese'] = tese_html.group(1).strip()
                 
-                # Montar a URL direta de impressão do histórico (/secretaria-imprimir)
-                if base_url.endswith("secretaria-imprimir"):
-                    pdf_imprimir_url = base_url
+            ano_html = re.search(r"Ano[\s:]*([\d]{4})", html_text, re.I)
+            if ano_html:
+                aluno_info['ano_tese'] = ano_html.group(1).strip()
+                
+            membros_html = re.search(r"Membros\s*da\s*Banca[\s:]*(.*?)(?=\n|Homologação|Orientador|Situação)", html_text, re.I | re.DOTALL)
+            if membros_html and membros_html.group(1).strip():
+                aluno_info['membros_banca'] = membros_html.group(1).replace("\n", ", ").strip()
+                
+            sit_tese_html = re.search(r"Situação\s*da\s*Tese[\s:]*(.*?)(?=\n|Orientador|Homologação)", html_text, re.I)
+            if sit_tese_html and sit_tese_html.group(1).strip():
+                aluno_info['situacao_tese'] = sit_tese_html.group(1).strip()
+                
+            orient_html = re.search(r"Orientador[\(a\)]*[\s:]*(.*?)(?=\s{2,}|\n|Homologação|Defesa|Membros)", html_text, re.I)
+            if orient_html and orient_html.group(1).strip():
+                aluno_info['orientador'] = orient_html.group(1).strip()
+                
+            homol_html = re.search(r"Homologação\s*do\s*Título[\s:]*(.*?)(?=\n|1[ºo°]|Defesa|Orientador)", html_text, re.I)
+            if homol_html and homol_html.group(1).strip():
+                aluno_info['homologacao'] = homol_html.group(1).strip()
+                
+            l1_html = re.search(r"1[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|2[ºo°]|Defesa)", html_text, re.I)
+            if l1_html and l1_html.group(1).strip():
+                aluno_info['lingua_1'] = l1_html.group(1).strip()
+                
+            l2_html = re.search(r"2[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|Defesa|Membros)", html_text, re.I)
+            if l2_html and l2_html.group(1).strip():
+                aluno_info['lingua_2'] = l2_html.group(1).strip()
+                
+            defesa_html = re.search(r"Defesa[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
+            if defesa_html:
+                aluno_info['defesa'] = defesa_html.group(1).strip()
+        except Exception as e_html:
+            print(f"Aviso ao ler HTML da banca: {e_html}")
+
+        current_url = page.url
+        base_url = current_url.split("?")[0].rstrip("/")
+        pdf_imprimir_url = base_url if base_url.endswith("secretaria-imprimir") else f"{base_url}/secretaria-imprimir"
+
+        # 3. Clicar no botão 'Imprimir' (target="_blank") para abrir a aba do PDF e salvar o arquivo
+        try:
+            close_sweetalert_overlays(page)
+            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+            
+            with page.context.expect_page(timeout=12000) as new_tab_info:
+                imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
+                if imprimir_btn.count() > 0:
+                    imprimir_btn.click(force=True)
                 else:
-                    pdf_imprimir_url = f"{base_url}/secretaria-imprimir"
+                    page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
                     
-                pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
+            pdf_tab = new_tab_info.value
+            pdf_tab.wait_for_timeout(3000)
+            
+            # Obter os bytes reais do PDF da aba aberta e salvar em downloads/
+            pdf_b64 = pdf_tab.evaluate("""async () => {
+                try {
+                    const resp = await fetch(window.location.href);
+                    const blob = await resp.blob();
+                    return new Promise((res) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => res(reader.result.split(',')[1]);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch(e) { return null; }
+            }""")
+            
+            if pdf_b64:
+                import base64
+                pdf_bytes = base64.b64decode(pdf_b64)
+                if b'%PDF' in pdf_bytes[:50]:
+                    with open(pdf_historico_path, "wb") as f_pdf:
+                        f_pdf.write(pdf_bytes)
+                        
+            pdf_tab.close()
+        except Exception as e_tab:
+            print(f"Aviso ao abrir nova aba de impressão: {e_tab}")
+            
+    except Exception as e_proc:
+        print(f"Erro ao processar discente: {e_proc}")
 
-                # 1. Clicar no botão 'Imprimir' (target="_blank") e capturar a nova aba do PDF do Histórico
-                try:
-                    close_sweetalert_overlays(page)
-                    with page.context.expect_page(timeout=12000) as new_tab_info:
-                        imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
-                        if imprimir_btn.count() > 0:
-                            imprimir_btn.click(force=True)
-                        else:
-                            page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
-                            
-                    pdf_tab = new_tab_info.value
-                    pdf_tab.wait_for_timeout(2000)
-                    
-                    # Extrair o PDF da nova aba do Chromium
-                    pdf_b64 = pdf_tab.evaluate("""async () => {
-                        try {
-                            const resp = await fetch(window.location.href);
-                            const blob = await resp.blob();
-                            return new Promise((res) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => res(reader.result.split(',')[1]);
-                                reader.readAsDataURL(blob);
-                            });
-                        } catch(e) { return null; }
-                    }""")
-                    
-                    if pdf_b64:
-                        import base64
-                        pdf_bytes = base64.b64decode(pdf_b64)
-                        if b'%PDF' in pdf_bytes[:50]:
-                            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                            with open(pdf_historico_path, "wb") as f_pdf:
-                                f_pdf.write(pdf_bytes)
-                                
-                    pdf_tab.close()
-                except Exception as e_tab:
-                    print(f"Aviso ao abrir nova aba de impressão: {e_tab}")
-
-                # 2. Clicar no botão 'Comprovante' (target="_blank") e capturar a nova aba do Comprovante
-                try:
-                    close_sweetalert_overlays(page)
-                    with page.context.expect_page(timeout=8000) as comp_tab_info:
-                        comp_btn = page.locator("a[href*='comprovante-matricula'], a:has-text('Comprovante')").first
-                        if comp_btn.count() > 0:
-                            comp_btn.click(force=True)
-                        else:
-                            page.evaluate(f"window.open('{pdf_comprovante_url}', '_blank');")
-                            
-                    comp_tab = comp_tab_info.value
-                    comp_tab.wait_for_timeout(1500)
-                    
-                    comp_b64 = comp_tab.evaluate("""async () => {
-                        try {
-                            const resp = await fetch(window.location.href);
-                            const blob = await resp.blob();
-                            return new Promise((res) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => res(reader.result.split(',')[1]);
-                                reader.readAsDataURL(blob);
-                            });
-                        } catch(e) { return null; }
-                    }""")
-                    
-                    if comp_b64:
-                        import base64
-                        comp_bytes = base64.b64decode(comp_b64)
-                        if b'%PDF' in comp_bytes[:50]:
-                            pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
-                            with open(pdf_comprovante_path, "wb") as f_comp:
-                                f_comp.write(comp_bytes)
-                                
-                    comp_tab.close()
-                except Exception:
-                    pass
-        except Exception as e_proc:
-            print(f"Erro ao processar URL do candidato: {e_proc}")
-
-        # Se conseguimos o arquivo do Histórico ou Comprovante, rodar o parser de PDF
-        if pdf_historico_path and os.path.exists(pdf_historico_path):
-            parsed = parse_pdf_data(pdf_historico_path)
-            if parsed:
-                for k, v in parsed.items():
-                    if v: aluno_info[k] = v
-                    
-        if pdf_comprovante_path and os.path.exists(pdf_comprovante_path):
-            parsed_comp = parse_pdf_data(pdf_comprovante_path)
-            if parsed_comp:
-                for k, v in parsed_comp.items():
-                    if v and not aluno_info.get(k): aluno_info[k] = v
-
-        if aluno_info.get("cpf") or aluno_info.get("rg") or aluno_info.get("sexo"):
-            break
+    # 4. Ler os dados do arquivo PDF salvo em downloads/ usando o pdfplumber
+    if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100:
+        parsed = parse_pdf_data(pdf_historico_path)
+        if parsed:
+            for k, v in parsed.items():
+                if v: aluno_info[k] = v
 
     return {
         "status": "success",
