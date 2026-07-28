@@ -279,6 +279,123 @@ def sort_and_format_card_data(relevant_data):
     formatted_items.sort(key=get_priority)
     return formatted_items
 
+def generate_printable_report_html(df_report, title_name):
+    """Gera documento HTML responsivo e formatado para impressão (A4 / PDF) com acionamento automático de window.print()."""
+    html_cols = "".join([f"<th>{col}</th>" for col in df_report.columns])
+    
+    rows_html = []
+    for idx, row in df_report.iterrows():
+        cells = "".join([f"<td>{str(val) if val is not None else ''}</td>" for val in row.values])
+        rows_html.append(f"<tr>{cells}</tr>")
+    html_rows = "\n".join(rows_html)
+    
+    now_str = datetime.now().strftime("%d/%m/%Y às %H:%M")
+    
+    html_doc = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório de Demandas - UNIFESP EFLCH</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap');
+        body {{
+            font-family: 'Merriweather', 'Helvetica Neue', Arial, sans-serif;
+            margin: 20px;
+            color: #174C33;
+            background-color: #ffffff;
+        }}
+        .header {{
+            text-align: center;
+            border-bottom: 3px solid #174C33;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }}
+        .header h1 {{
+            margin: 0;
+            color: #174C33;
+            font-size: 20px;
+        }}
+        .header p {{
+            margin: 4px 0 0 0;
+            color: #615c5c;
+            font-size: 13px;
+        }}
+        .meta {{
+            font-size: 12px;
+            margin-bottom: 15px;
+            color: #333333;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-top: 10px;
+        }}
+        th, td {{
+            border: 1px solid #cccccc;
+            padding: 6px 8px;
+            text-align: left;
+            word-wrap: break-word;
+        }}
+        th {{
+            background-color: #174C33;
+            color: #ffffff;
+            font-weight: bold;
+        }}
+        tr:nth-child(even) {{
+            background-color: #f9fbf9;
+        }}
+        .footer {{
+            margin-top: 30px;
+            text-align: center;
+            font-size: 10px;
+            color: #888888;
+            border-top: 1px solid #eeeeee;
+            padding-top: 8px;
+        }}
+        @media print {{
+            @page {{
+                size: A4 landscape;
+                margin: 10mm;
+            }}
+            body {{
+                margin: 0;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>UNIFESP — Relatório de Demandas ({title_name})</h1>
+        <p>Painel de Controle - CaPGPq-EFLCH | Gerado em: {now_str}</p>
+    </div>
+    
+    <div class="meta">
+        <strong>Total de Registros:</strong> {len(df_report)} item(ns)
+    </div>
+    
+    <table>
+        <thead>
+            <tr>{html_cols}</tr>
+        </thead>
+        <tbody>
+            {html_rows}
+        </tbody>
+    </table>
+    
+    <div class="footer">
+        Relatório oficial gerado pelo Painel de Controle CaPGPq-EFLCH — UNIFESP
+    </div>
+    
+    <script>
+        window.onload = function() {{
+            window.print();
+        }};
+    </script>
+</body>
+</html>"""
+    return html_doc
+
 def parse_date_br(date_str):
     if not date_str or not str(date_str).strip():
         return None
@@ -1621,14 +1738,46 @@ def show_demand_page(sheet_id, info):
             csv_bytes = df_report.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             
             st.dataframe(df_report, use_container_width=True, height=250)
-            st.download_button(
-                label="📥 Baixar Relatório Completo (CSV / Excel)",
-                data=csv_bytes,
-                file_name=f"Relatorio_Demandas_{info['tipo'].replace(' ', '_')}_{hoje.strftime('%d_%m_%Y')}.csv",
-                mime="text/csv",
-                type="primary",
-                key=f"btn_dl_report_{sheet_id}"
-            )
+            
+            b_col1, b_col2 = st.columns(2)
+            with b_col1:
+                st.download_button(
+                    label="📥 Baixar Relatório Completo (CSV / Excel)",
+                    data=csv_bytes,
+                    file_name=f"Relatorio_Demandas_{info['tipo'].replace(' ', '_')}_{hoje.strftime('%d_%m_%Y')}.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"btn_dl_report_{sheet_id}"
+                )
+                
+            with b_col2:
+                import base64
+                html_print = generate_printable_report_html(df_report, info['tipo'])
+                b64_print = base64.b64encode(html_print.encode('utf-8')).decode('utf-8')
+                data_url_print = f"data:text/html;base64,{b64_print}"
+                
+                st.markdown(
+                    f"""
+                    <a href="{data_url_print}" target="_blank" style="text-decoration: none;">
+                        <button style="
+                            background-color: #174C33; 
+                            color: #ffffff; 
+                            border: 1px solid #174C33; 
+                            padding: 9px 16px; 
+                            border-radius: 6px; 
+                            font-weight: 600; 
+                            font-family: 'Merriweather', serif; 
+                            cursor: pointer; 
+                            width: 100%;
+                            transition: all 0.2s ease-in-out;
+                        " onmouseover="this.style.backgroundColor='#82bf24'; this.style.borderColor='#82bf24';" onmouseout="this.style.backgroundColor='#174C33'; this.style.borderColor='#174C33';">
+                            🖨️ Imprimir Relatório
+                        </button>
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
         else:
             st.info("Nenhuma demanda encontrada com a combinação atual de filtros.")
 
