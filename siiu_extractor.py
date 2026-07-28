@@ -109,7 +109,7 @@ def init_cached_driver(login, senha):
 import gc
 
 def _run_with_playwright_page(login, senha, task_fn):
-    """Executa a task_fn(page) em um contexto isolado de baixíssimo consumo de memória RAM."""
+    """Executa a task_fn(page) em um contexto isolado e estável do Playwright em contêineres."""
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -121,8 +121,16 @@ def _run_with_playwright_page(login, senha, task_fn):
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
-                "--single-process",
                 "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-breakpad",
+                "--disable-component-extensions-with-background-pages",
+                "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process",
+                "--disable-ipc-flooding-protection",
+                "--disable-renderer-backgrounding",
+                "--mute-audio",
                 "--js-flags=--max-old-space-size=128",
                 "--blink-settings=imagesEnabled=false"
             ]
@@ -151,6 +159,14 @@ def _run_with_playwright_page(login, senha, task_fn):
         except Exception as e:
             return {"status": "error", "message": f"Erro na busca: {e}"}
         finally:
+            try:
+                page.close()
+            except Exception:
+                pass
+            try:
+                context.close()
+            except Exception:
+                pass
             try:
                 browser.close()
             except Exception:
