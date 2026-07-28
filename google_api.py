@@ -14,7 +14,6 @@ SCOPES = [
 ]
 
 def get_credentials():
-    # 1. Verifica se estamos rodando na nuvem (Streamlit Cloud) via Service Account
     try:
         if "gcp_service_account" in st.secrets:
             creds = service_account.Credentials.from_service_account_info(
@@ -23,9 +22,8 @@ def get_credentials():
             )
             return creds
     except Exception:
-        pass # Ignora erro caso o arquivo secrets.toml não exista localmente
+        pass
         
-    # 1.5. Verifica se o token OAuth pessoal foi passado pelo st.secrets ou os.environ
     token_str = None
     try:
         if "google_oauth_token" in st.secrets:
@@ -48,8 +46,6 @@ def get_credentials():
         except Exception as e:
             print(f"Erro ao autenticar via google_oauth_token: {e}")
 
-
-    # 2. Caso contrário, usa o fluxo local (OAuth com credentials.json)
     creds = None
     if os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
@@ -60,7 +56,7 @@ def get_credentials():
             creds.refresh(Request())
         else:
             if not os.path.exists('credentials.json'):
-                raise FileNotFoundError("Arquivo credentials.json não encontrado. Por favor, coloque-o na raiz do projeto (se rodando local) ou configure os Secrets no Streamlit Cloud.")
+                raise FileNotFoundError("Arquivo credentials.json não encontrado.")
             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         
@@ -69,19 +65,30 @@ def get_credentials():
             
     return creds
 
+@st.cache_resource(show_spinner=False)
+def get_sheets_service():
+    """Retorna o serviço da API Sheets v4 em cache para evitar chamadas lentas de discovery."""
+    creds = get_credentials()
+    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
+
+@st.cache_resource(show_spinner=False)
+def get_drive_service():
+    """Retorna o serviço da API Drive v3 em cache."""
+    creds = get_credentials()
+    return build('drive', 'v3', credentials=creds, cache_discovery=False)
+
 def get_sheets():
     """Busca todas as planilhas (Google Sheets) acessíveis pelo usuário."""
-    creds = get_credentials()
-    service = build('drive', 'v3', credentials=creds)
+    service = get_drive_service()
     query = "mimeType='application/vnd.google-apps.spreadsheet'"
     results = service.files().list(q=query, pageSize=100, fields="nextPageToken, files(id, name)").execute()
     items = results.get('files', [])
     return items
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_sheet_data(spreadsheet_id, range_name='Respostas ao formulário 1'):
-    """Busca os dados de uma planilha e aba específicos com fallback automático."""
-    creds = get_credentials()
-    service = build('sheets', 'v4', credentials=creds)
+    """Busca os dados de uma planilha e aba específicos com cache de 60s e fallback automático."""
+    service = get_sheets_service()
     sheet = service.spreadsheets()
     
     clean_range = str(range_name).strip("'")
@@ -112,9 +119,8 @@ def col_num_to_letter(n):
     return string
 
 def update_sheet_cell(spreadsheet_id, sheet_name, row_index, col_index, new_value):
-    """Atualiza uma célula específica da planilha"""
-    creds = get_credentials()
-    service = build('sheets', 'v4', credentials=creds)
+    """Atualiza uma célula específica da planilha e invalida o cache para exibição imediata."""
+    service = get_sheets_service()
     
     col_letter = col_num_to_letter(col_index)
     cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
@@ -130,4 +136,10 @@ def update_sheet_cell(spreadsheet_id, sheet_name, row_index, col_index, new_valu
         body=body
     ).execute()
     
+    # Invalida o cache temporário para refletir a alteração imediatamente
+    try:
+        get_sheet_data.clear()
+    except Exception:
+        pass
+        
     return result
