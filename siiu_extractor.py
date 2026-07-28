@@ -619,19 +619,32 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
 
-    # Passo 6: Ler os dados do arquivo PDF baixado usando o pdfplumber
-    if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100:
-        parsed = parse_pdf_data(pdf_historico_path)
-        if parsed:
-            for k, v in parsed.items():
-                if v: aluno_info[k] = v
+    debug_pdf = {
+        "pdf_path": pdf_historico_path,
+        "exists": os.path.exists(pdf_historico_path) if pdf_historico_path else False,
+        "size_bytes": os.path.getsize(pdf_historico_path) if (pdf_historico_path and os.path.exists(pdf_historico_path)) else 0,
+        "raw_text": "",
+        "parsed_fields": {}
+    }
+
+    if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 10:
+        parsed_debug = parse_pdf_data(pdf_historico_path)
+        debug_pdf["parsed_fields"] = parsed_debug
+        try:
+            if pdfplumber:
+                with pdfplumber.open(pdf_historico_path) as p_doc:
+                    t_list = [p.extract_text() for p in p_doc.pages if p.extract_text()]
+                    debug_pdf["raw_text"] = "\n--- PÁGINA ---\n".join(t_list)
+        except Exception as e_raw:
+            debug_pdf["raw_text"] = f"Erro ao extrair texto bruto: {e_raw}"
 
     return {
         "status": "success",
         "aluno_info": aluno_info,
         "pdf_historico": pdf_historico_path,
         "pdf_comprovante": pdf_comprovante_path,
-        "historico": aluno_info.get("historico", [])
+        "historico": aluno_info.get("historico", []),
+        "debug_pdf": debug_pdf
     }
 
 def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):

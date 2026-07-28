@@ -211,9 +211,9 @@ def check_password():
     st.markdown("<h2 style='text-align: center; color: #174C33;'>🔒 Acesso Restrito</h2>", unsafe_allow_html=True)
     
     try:
-        senha_correta = st.secrets.get("app_password", "unifesp2026")
+        senha_correta = st.secrets.get("app_password", "cafezinho")
     except Exception:
-        senha_correta = "unifesp2026"
+        senha_correta = "cafezinho"
         
     with st.form("login_form"):
         senha_digitada = st.text_input("Digite a senha para acessar o Automador CaPGPq-EFLCH:", type="password")
@@ -1119,8 +1119,27 @@ def show_academic_analysis():
                         st.download_button(label="Baixar Comprovante (PDF)", data=pdf_data2, file_name=f"Comprovante_{resultado['aluno_info'].get('nome', 'Aluno')}.pdf", mime="application/pdf", type="primary", key="btn_down_comp")
                 except Exception as e:
                     st.error(f"Erro ao ler PDF do Comprovante: {e}")
-                    
-        with st.expander("🛠️ Debug (Para enviar ao desenvolvedor)"):
+        # Debug da Leitura do PDF em Tempo Real
+        if resultado.get("debug_pdf"):
+            dbg = resultado["debug_pdf"]
+            with st.expander("🐞 Debug da Leitura de PDF (Acompanhamento em Tempo Real)", expanded=True):
+                st.write(f"**Caminho do Arquivo:** `{dbg.get('pdf_path', 'N/A')}`")
+                st.write(f"**Existe em Disco:** `{'Sim ✅' if dbg.get('exists') else 'Não ❌'}`")
+                st.write(f"**Tamanho em Bytes:** `{dbg.get('size_bytes', 0)} bytes`")
+                
+                st.write("---")
+                st.write("##### 🔍 Campos Extraídos do PDF pelo Robô:")
+                st.json(dbg.get("parsed_fields", {}))
+                
+                st.write("---")
+                st.write("##### 📄 Texto Bruto Lido do PDF pelo pdfplumber / pypdf:")
+                r_txt = dbg.get("raw_text", "")
+                if r_txt:
+                    st.code(r_txt, language="text")
+                else:
+                    st.warning("⚠️ Nenhum texto pôde ser lido do PDF. O arquivo pode estar vazio ou ter sido salvo incorretamente.")
+
+        with st.expander("🛠️ Debug Geral (Para enviar ao desenvolvedor)"):
             st.write("Se os dados acima estiverem incompletos, copie o texto abaixo e envie para o desenvolvedor analisar:")
             st.code(f"URL: {resultado.get('debug_url', 'N/A')}\n\nPAGE_TEXT:\n{resultado.get('debug_text', 'N/A')}", language="text")
 
