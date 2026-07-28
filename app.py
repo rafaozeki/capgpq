@@ -61,7 +61,9 @@ KEYWORDS = [
     "e-mail", "cep", "logradouro", "número", "bairro", "cidade", "estado", 
     "complemento", "programa de pós", "rg", "rne", "tipo de benefício", "rua", 
     "situação", "prazo", "nível", "ano de ingresso", "processo sei", "naturalidade", 
-    "homologação", "observações", "pendências", "orcid", "secretário", "lattes"
+    "homologação", "observações", "pendências", "orcid", "secretário", "lattes",
+    "tipo de solicitação", "data para execução", "nº do processo", "unidade", 
+    "carimbo", "data da demanda", "processo recebido por", "recebido em"
 ]
 
 CSS = """
@@ -217,6 +219,65 @@ def extract_relevant_data(row, header):
             if val_clean:
                 extracted[col_clean] = val_clean
     return extracted
+
+def sort_and_format_card_data(relevant_data):
+    """
+    Formata e ordena os campos dos cards para Controle de Processos SEI e demais demandas.
+    Ordem obrigatória:
+    1. Tipo de solicitação
+    2. Unidade
+    3. Situação (triagem)
+    4. Nº do Processo
+    5. Data para Execução
+    6. Observações
+    ...demais campos.
+    Também renomeia 'Endereço de e-mail' / 'E-mail' para 'Processo recebido por' e 'Carimbo de data/hora' para 'Recebido em'.
+    """
+    formatted_items = []
+    
+    for original_key, val in relevant_data.items():
+        k_norm = original_key.strip()
+        k_low = k_norm.lower()
+        
+        display_label = k_norm
+        if "e-mail" in k_low or "email" in k_low:
+            display_label = "Processo recebido por"
+        elif "carimbo" in k_low:
+            display_label = "Recebido em"
+            
+        formatted_items.append({
+            "original_key": original_key,
+            "display_label": display_label,
+            "val": val
+        })
+        
+    priority_order = [
+        "tipo de solicitação",
+        "tipo de solicitacao",
+        "unidade",
+        "situação (triagem)",
+        "situacao (triagem)",
+        "situação",
+        "situacao",
+        "nº do processo",
+        "n° do processo",
+        "numero do processo",
+        "processo sei",
+        "data para execução",
+        "data para execucao",
+        "observações",
+        "observacoes"
+    ]
+    
+    def get_priority(item):
+        lbl_low = item["display_label"].lower()
+        for idx, p in enumerate(priority_order):
+            if p in lbl_low:
+                return idx
+        return 999
+        
+    formatted_items.sort(key=get_priority)
+    return formatted_items
 
 def parse_date_br(date_str):
     if not date_str or not str(date_str).strip():
@@ -1447,37 +1508,36 @@ def show_demand_page(sheet_id, info):
             
         with st.expander(f"👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}"):
             relevant_data = extract_relevant_data(row_padded, header)
+            card_items = sort_and_format_card_data(relevant_data)
             
-            if not relevant_data:
+            if not card_items:
                 st.warning("Não encontrei campos padrão nesta planilha.")
             else:
-                keys = list(relevant_data.keys())
                 num_colunas = 3
                 
-                for i in range(0, len(keys), num_colunas):
+                for i in range(0, len(card_items), num_colunas):
                     cols = st.columns(num_colunas)
                     for j in range(num_colunas):
-                        if i + j < len(keys):
-                            key = keys[i+j]
-                            val = relevant_data[key]
+                        if i + j < len(card_items):
+                            item = card_items[i+j]
+                            disp_label = item["display_label"]
+                            orig_key = item["original_key"]
+                            val = item["val"]
                             
                             if val and str(val).strip():
                                 with cols[j]:
-                                    # Aplicando a classe CSS pro título verde escuro e Merriweather
-                                    st.markdown(f'<div class="info-title">{key}</div>', unsafe_allow_html=True)
+                                    st.markdown(f'<div class="info-title">{disp_label}</div>', unsafe_allow_html=True)
                                     
-                                    # Linha interna para o st.code e o botão de editar
                                     inner_c1, inner_c2 = st.columns([4, 1])
                                     with inner_c1:
                                         st.code(val, language="text")
                                     with inner_c2:
-                                        # Popover para editar este campo específico
                                         with st.popover("✏️"):
-                                            st.write(f"Editar **{key}**")
-                                            novo_valor = st.text_input("Novo valor:", value=str(val), key=f"inp_{idx_real_na_planilha}_{key}")
-                                            if st.button("Salvar na Planilha", key=f"btn_{idx_real_na_planilha}_{key}"):
+                                            st.write(f"Editar **{disp_label}**")
+                                            novo_valor = st.text_input("Novo valor:", value=str(val), key=f"inp_{idx_real_na_planilha}_{orig_key}")
+                                            if st.button("Salvar na Planilha", key=f"btn_{idx_real_na_planilha}_{orig_key}"):
                                                 try:
-                                                    coluna_index = header.index(key)
+                                                    coluna_index = header.index(orig_key)
                                                     update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, coluna_index, novo_valor)
                                                     st.success("Salvo com sucesso! A página irá recarregar.")
                                                     st.rerun()
