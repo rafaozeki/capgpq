@@ -30,6 +30,20 @@ PPG_MAPPING_SIIU = {
     "POS-DOUTORADO": "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
 }
 
+def close_sweetalert_overlays(page):
+    """Fecha modais e sobreposições do SweetAlert (swal-overlay) que cobrem os botões do SIIU."""
+    try:
+        page.evaluate("""
+            try {
+                if (typeof swal !== 'undefined' && swal.close) swal.close();
+                if (typeof Swal !== 'undefined' && Swal.close) Swal.close();
+                const overlays = document.querySelectorAll('.swal-overlay, .swal2-container');
+                overlays.forEach(el => el.remove());
+            } catch(e) {}
+        """)
+    except Exception:
+        pass
+
 def parse_pdf_data(pdf_path):
     info = {}
     if not pdfplumber or not pdf_path or not os.path.exists(pdf_path):
@@ -215,11 +229,18 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         if selected:
             page.wait_for_timeout(1000)
         
+        close_sweetalert_overlays(page)
+        
         search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
         search_input.fill(query)
         
+        close_sweetalert_overlays(page)
+        
         btn_pesquisar = page.locator("button:has-text('Pesquisar')").first
-        btn_pesquisar.click()
+        try:
+            btn_pesquisar.click(force=True)
+        except Exception:
+            page.evaluate("el => el.click()", btn_pesquisar.element_handle())
         
         page.wait_for_timeout(1500)
         
