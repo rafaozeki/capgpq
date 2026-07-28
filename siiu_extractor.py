@@ -177,7 +177,7 @@ def _run_with_playwright_page(login, senha, task_fn):
         )
         page = context.new_page()
         try:
-            page.goto("https://notas-propgpq.siiu.unifesp.br/login", timeout=30000)
+            page.goto("https://notas-propgpq.siiu.unifesp.br/login", timeout=30000, wait_until="domcontentloaded")
             page.fill("#username", login)
             page.fill("#password", senha)
             page.click("button[type='submit']")
@@ -187,7 +187,7 @@ def _run_with_playwright_page(login, senha, task_fn):
             if "incorreto" in body_text.lower() or "inválid" in body_text.lower() or "credencial" in body_text.lower():
                 return {"status": "error", "message": "Usuário e/ou senha do SIIU incorretos. Verifique suas credenciais."}
                 
-            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
+            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000, wait_until="domcontentloaded")
             page.wait_for_selector("#areas_prin_codigo", timeout=15000)
             
             res = task_fn(page)

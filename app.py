@@ -1045,42 +1045,42 @@ def show_academic_analysis():
                     st.markdown("**Créditos Necessários:**")
                     st.code(aluno_info.get('creditos_necessarios', 'Pendente...'), language="text")
             
-        st.write("---")
-        st.write("#### 🔍 Análise do Histórico")
-        pendencias = []
-        info = resultado['aluno_info']
-        
-        # 1. Total de Créditos vs Créditos Necessários
-        try:
-            total_cred = int(info.get('creditos_total', '0'))
-            nec_cred = int(info.get('creditos_necessarios', '0'))
-            if total_cred < nec_cred:
-                pendencias.append(f"O aluno possui créditos insuficientes. (Total: {total_cred}, Necessários: {nec_cred})")
-        except:
-            pass # Ignora se não puder converter para inteiro
-            
-        # 2. Homologação do Título pendente
-        if "Pendente" in info.get('homologacao', 'Pendente'):
-            pendencias.append("Homologação de título pendente.")
-            
-        # 3. Defesa pendente
-        if "Pendente" in info.get('defesa', 'Pendente'):
-            pendencias.append("Defesa pendente.")
-            
-        # 4. 1º Língua Estrangeira pendente
-        if "Pendente" in info.get('lingua_1', 'Pendente'):
-            pendencias.append("1º Língua estrangeira pendente.")
-            
-        # 5/6. 2º Língua Estrangeira no Doutorado
-        if "DOUTORADO" in info.get('nivel', '').upper():
-            if "Pendente" in info.get('lingua_2', 'Pendente'):
-                pendencias.append("2º Língua estrangeira pendente.")
+                st.write("---")
+                st.write("#### 🔍 Análise do Histórico")
+                pendencias = []
+                info = aluno_info
                 
-        if pendencias:
-            for p in pendencias:
-                st.error(f"⚠️ {p}")
-        else:
-            st.success("✅ Nenhuma pendência encontrada com base na análise automatizada.")
+                # 1. Total de Créditos vs Créditos Necessários
+                try:
+                    total_cred = int(info.get('creditos_total', '0'))
+                    nec_cred = int(info.get('creditos_necessarios', '0'))
+                    if total_cred < nec_cred:
+                        pendencias.append(f"O aluno possui créditos insuficientes. (Total: {total_cred}, Necessários: {nec_cred})")
+                except:
+                    pass
+                    
+                # 2. Homologação do Título pendente
+                if "Pendente" in info.get('homologacao', 'Pendente'):
+                    pendencias.append("Homologação de título pendente.")
+                    
+                # 3. Defesa pendente
+                if "Pendente" in info.get('defesa', 'Pendente'):
+                    pendencias.append("Defesa pendente.")
+                    
+                # 4. 1º Língua Estrangeira pendente
+                if "Pendente" in info.get('lingua_1', 'Pendente'):
+                    pendencias.append("1º Língua estrangeira pendente.")
+                    
+                # 5/6. 2º Língua Estrangeira no Doutorado
+                if "DOUTORADO" in info.get('nivel', '').upper():
+                    if "Pendente" in info.get('lingua_2', 'Pendente'):
+                        pendencias.append("2º Língua estrangeira pendente.")
+                        
+                if pendencias:
+                    for p in pendencias:
+                        st.error(f"⚠️ {p}")
+                else:
+                    st.success("✅ Nenhuma pendência encontrada com base na análise automatizada.")
             
         # Sessão de Downloads
         if resultado.get("pdf_historico") or resultado.get("pdf_comprovante"):
