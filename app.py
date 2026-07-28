@@ -1765,39 +1765,14 @@ def show_demand_page(sheet_id, info):
                 
             with b_col2:
                 html_print = generate_printable_report_html(df_report, info['tipo'])
-                json_html = json.dumps(html_print)
-                
-                st.components.v1.html(
-                    f"""
-                    <div style="font-family: sans-serif; padding: 0; margin: 0;">
-                        <button onclick='
-                            var content = {json_html};
-                            var printWin = window.open("", "_blank");
-                            if (printWin) {{
-                                printWin.document.open();
-                                printWin.document.write(content);
-                                printWin.document.close();
-                            }} else {{
-                                alert("Por favor, permita popups para este site para imprimir o relatório.");
-                            }}
-                        ' style="
-                            background-color: #174C33; 
-                            color: #ffffff; 
-                            border: 1px solid #174C33; 
-                            padding: 9px 16px; 
-                            border-radius: 6px; 
-                            font-weight: 600; 
-                            font-size: 14px; 
-                            cursor: pointer; 
-                            width: 100%;
-                            height: 38px;
-                            transition: all 0.2s ease-in-out;
-                        " onmouseover="this.style.backgroundColor='#82bf24'; this.style.borderColor='#82bf24';" onmouseout="this.style.backgroundColor='#174C33'; this.style.borderColor='#174C33';">
-                            🖨️ Imprimir Relatório
-                        </button>
-                    </div>
-                    """,
-                    height=45
+                st.download_button(
+                    label="🖨️ Imprimir / Baixar Relatório (HTML)",
+                    data=html_print,
+                    file_name=f"Imprimir_Relatorio_{info['tipo'].replace(' ', '_')}_{hoje.strftime('%d_%m_%Y')}.html",
+                    mime="text/html",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"btn_print_report_{sheet_id}"
                 )
         else:
             st.info("Nenhuma demanda encontrada com a combinação atual de filtros.")
