@@ -557,54 +557,31 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     
                 pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
 
-                # 1. Capturar o download do PDF tratando 'Download is starting'
+                # 1. Obter os bytes do PDF do Histórico Acadêmico via requisição direta com cookies de sessão
                 try:
-                    with page.expect_download(timeout=15000) as dl_info:
-                        try:
-                            page.goto(pdf_imprimir_url, timeout=15000)
-                        except Exception as e_g:
-                            if "Download is starting" in str(e_g) or "download" in str(e_g).lower():
-                                pass
-                            else:
-                                raise e_g
-                    dl = dl_info.value
-                    pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                    dl.save_as(pdf_historico_path)
-                except Exception as e_dl_goto:
-                    print(f"Aviso expect_download goto /secretaria-imprimir: {e_dl_goto}")
+                    res_pdf = page.request.get(pdf_imprimir_url, timeout=12000)
+                    body_pdf = res_pdf.body()
+                    if body_pdf[:4] == b'%PDF' or len(body_pdf) > 500:
+                        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                        with open(pdf_historico_path, "wb") as f_pdf:
+                            f_pdf.write(body_pdf)
+                except Exception as e_pdf_req:
+                    print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
 
-                # 2. Tentar capturar o Comprovante de Matrícula via expect_download
+                # 2. Obter os bytes do Comprovante de Matrícula
                 try:
-                    with page.expect_download(timeout=8000) as dl_info_comp:
-                        try:
-                            page.goto(pdf_comprovante_url, timeout=8000)
-                        except Exception as e_gc:
-                            if "Download is starting" in str(e_gc) or "download" in str(e_gc).lower():
-                                pass
-                            else:
-                                raise e_gc
-                    dl_c = dl_info_comp.value
-                    pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
-                    dl_c.save_as(pdf_comprovante_path)
+                    res_comp = page.request.get(pdf_comprovante_url, timeout=10000)
+                    body_comp = res_comp.body()
+                    if body_comp[:4] == b'%PDF' or len(body_comp) > 500:
+                        pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
+                        with open(pdf_comprovante_path, "wb") as f_comp:
+                            f_comp.write(body_comp)
                 except Exception:
                     pass
 
-                # 3. Fallback via page.request.get se expect_download não salvou o arquivo
+                # 3. Fallback: Se por alguma razão o request direto não trouxe o PDF, tentar clique com expect_download
                 if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
                     try:
-                        res_pdf = page.request.get(pdf_imprimir_url, timeout=10000)
-                        if res_pdf.body()[:4] == b'%PDF' or len(res_pdf.body()) > 500:
-                            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                            with open(pdf_historico_path, "wb") as f_pdf:
-                                f_pdf.write(res_pdf.body())
-                    except Exception as e_pdf_req:
-                        print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
-
-                # 4. Fallback por clique em botões visíveis da página
-                if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
-                    try:
-                        page.goto(full_url, timeout=15000, wait_until="domcontentloaded")
-                        page.wait_for_timeout(1000)
                         links_dom = page.locator("a, button, [onclick]").all()
                         for el in links_dom:
                             txt = (el.inner_text() or "").strip().lower()
