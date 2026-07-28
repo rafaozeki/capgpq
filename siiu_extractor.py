@@ -515,43 +515,59 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     
                 pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
 
-                # Tentar requisição HTTP direta à URL /secretaria-imprimir com os cookies da sessão
+                # 1. Tentar capturar o evento de download do Chromium navegando para /secretaria-imprimir
                 try:
-                    res_pdf = page.request.get(pdf_imprimir_url, timeout=10000)
-                    if res_pdf.body()[:4] == b'%PDF' or "pdf" in str(res_pdf.headers.get("content-type", "")).lower():
-                        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                        with open(pdf_historico_path, "wb") as f_pdf:
-                            f_pdf.write(res_pdf.body())
-                except Exception as e_pdf_req:
-                    print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
+                    with page.expect_download(timeout=10000) as dl_info:
+                        page.goto(pdf_imprimir_url, timeout=10000)
+                    dl = dl_info.value
+                    pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                    dl.save_as(pdf_historico_path)
+                except Exception as e_dl_goto:
+                    print(f"Aviso expect_download goto /secretaria-imprimir: {e_dl_goto}")
 
-                # Tentar requisição HTTP direta ao Comprovante de Matrícula
+                # 2. Tentar capturar o Comprovante de Matrícula via expect_download
                 try:
-                    res_comp = page.request.get(pdf_comprovante_url, timeout=10000)
-                    if res_comp.body()[:4] == b'%PDF' or "pdf" in str(res_comp.headers.get("content-type", "")).lower():
-                        pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
-                        with open(pdf_comprovante_path, "wb") as f_pdf:
-                            f_pdf.write(res_comp.body())
+                    with page.expect_download(timeout=8000) as dl_info_comp:
+                        page.goto(pdf_comprovante_url, timeout=8000)
+                    dl_c = dl_info_comp.value
+                    pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
+                    dl_c.save_as(pdf_comprovante_path)
                 except Exception:
                     pass
 
-                # Fallback: Se não baixou via request, procurar e clicar nos botões visíveis da página renderizada
-                if not pdf_historico_path or not os.path.exists(pdf_historico_path):
-                    links_dom = page.locator("a, button, [onclick]").all()
-                    for el in links_dom:
-                        txt = (el.inner_text() or "").strip().lower()
-                        href = (el.get_attribute("href") or el.get_attribute("onclick") or "").lower()
-                        if "secretaria-imprimir" in href or "histórico" in txt or "historico" in txt:
-                            try:
-                                close_sweetalert_overlays(page)
-                                with page.expect_download(timeout=5000) as dl_info:
-                                    el.click(force=True)
-                                dl = dl_info.value
-                                pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                                dl.save_as(pdf_historico_path)
-                                break
-                            except Exception:
-                                pass
+                # 3. Fallback via page.request.get se expect_download não capturou
+                if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
+                    try:
+                        res_pdf = page.request.get(pdf_imprimir_url, timeout=10000)
+                        if res_pdf.body()[:4] == b'%PDF' or len(res_pdf.body()) > 500:
+                            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                            with open(pdf_historico_path, "wb") as f_pdf:
+                                f_pdf.write(res_pdf.body())
+                    except Exception as e_pdf_req:
+                        print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
+
+                # 4. Fallback por clique em botões visíveis da página
+                if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
+                    try:
+                        page.goto(full_url, timeout=15000, wait_until="domcontentloaded")
+                        page.wait_for_timeout(1000)
+                        links_dom = page.locator("a, button, [onclick]").all()
+                        for el in links_dom:
+                            txt = (el.inner_text() or "").strip().lower()
+                            href = (el.get_attribute("href") or el.get_attribute("onclick") or "").lower()
+                            if "secretaria-imprimir" in href or "histórico" in txt or "historico" in txt:
+                                try:
+                                    close_sweetalert_overlays(page)
+                                    with page.expect_download(timeout=6000) as dl_info:
+                                        el.click(force=True)
+                                    dl = dl_info.value
+                                    pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                                    dl.save_as(pdf_historico_path)
+                                    break
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
         except Exception as e_proc:
             print(f"Erro ao processar URL do candidato: {e_proc}")
 
