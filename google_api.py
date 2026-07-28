@@ -65,30 +65,20 @@ def get_credentials():
             
     return creds
 
-@st.cache_resource(show_spinner=False)
-def get_sheets_service():
-    """Retorna o serviço da API Sheets v4 em cache para evitar chamadas lentas de discovery."""
-    creds = get_credentials()
-    return build('sheets', 'v4', credentials=creds, cache_discovery=False)
-
-@st.cache_resource(show_spinner=False)
-def get_drive_service():
-    """Retorna o serviço da API Drive v3 em cache."""
-    creds = get_credentials()
-    return build('drive', 'v3', credentials=creds, cache_discovery=False)
-
 def get_sheets():
     """Busca todas as planilhas (Google Sheets) acessíveis pelo usuário."""
-    service = get_drive_service()
+    creds = get_credentials()
+    service = build('drive', 'v3', credentials=creds, cache_discovery=False)
     query = "mimeType='application/vnd.google-apps.spreadsheet'"
     results = service.files().list(q=query, pageSize=100, fields="nextPageToken, files(id, name)").execute()
     items = results.get('files', [])
     return items
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_sheet_data(spreadsheet_id, range_name='Respostas ao formulário 1'):
-    """Busca os dados de uma planilha e aba específicos com cache de 60s e fallback automático."""
-    service = get_sheets_service()
+    """Busca os dados de uma planilha e aba específicos com cache temporário de 5 minutos e fallback automático."""
+    creds = get_credentials()
+    service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
     sheet = service.spreadsheets()
     
     clean_range = str(range_name).strip("'")
@@ -119,8 +109,9 @@ def col_num_to_letter(n):
     return string
 
 def update_sheet_cell(spreadsheet_id, sheet_name, row_index, col_index, new_value):
-    """Atualiza uma célula específica da planilha e invalida o cache para exibição imediata."""
-    service = get_sheets_service()
+    """Atualiza uma célula específica da planilha e limpa o cache de dados."""
+    creds = get_credentials()
+    service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
     
     col_letter = col_num_to_letter(col_index)
     cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
@@ -136,7 +127,6 @@ def update_sheet_cell(spreadsheet_id, sheet_name, row_index, col_index, new_valu
         body=body
     ).execute()
     
-    # Invalida o cache temporário para refletir a alteração imediatamente
     try:
         get_sheet_data.clear()
     except Exception:

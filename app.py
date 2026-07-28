@@ -529,70 +529,58 @@ def show_dashboard(config):
                 return p_of
         return "Não Identificado"
     
-    from concurrent.futures import ThreadPoolExecutor
-
-    def fetch_sheet(item):
-        s_id, s_info = item
-        t = s_info.get('tipo', 'Outros')
-        a = s_info.get('aba', 'Respostas ao formulário 1')
-        try:
-            d = get_sheet_data(s_id, a)
-            return t, d
-        except Exception:
-            return t, []
-
-    for sheet_id, info in config.items():
-        tipo = info.get('tipo', 'Outros')
-        if tipo not in atividades_por_tipo:
-            atividades_por_tipo[tipo] = 0
-
     try:
-        with ThreadPoolExecutor(max_workers=9) as executor:
-            sheet_results = list(executor.map(fetch_sheet, config.items()))
-
-        for tipo, data in sheet_results:
-            if data and len(data) > 1:
-                header = data[0]
-                rows = data[1:]
-                
-                data_col_index = None
-                for i, col in enumerate(header):
-                    c_low = str(col).lower()
-                    if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
-                        data_col_index = i
-                        break
-                
-                ppg_col_index = None
-                for i, col in enumerate(header):
-                    c_low = str(col).lower()
-                    if "programa" in c_low or "ppg" in c_low or "curso" in c_low:
-                        ppg_col_index = i
-                        break
-                        
-                for row in rows:
-                    row_padded = row + [''] * (len(header) - len(row))
-                    valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
-                    data_da_linha = parse_date_br(valor_data_completo)
+        for sheet_id, info in config.items():
+            tipo = info.get('tipo', 'Outros')
+            if tipo not in atividades_por_tipo:
+                atividades_por_tipo[tipo] = 0
+            
+            try:
+                data = get_sheet_data(sheet_id, info.get('aba', 'Respostas ao formulário 1'))
+                if data and len(data) > 1:
+                    header = data[0]
+                    rows = data[1:]
                     
-                    if filtro_selecao != "Desde o Início (Geral)":
-                        if data_da_linha and data_inicio and data_fim:
-                            if not (data_inicio <= data_da_linha <= data_fim):
-                                continue
-                        elif not data_da_linha:
-                            continue
+                    data_col_index = None
+                    for i, col in enumerate(header):
+                        c_low = str(col).lower()
+                        if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
+                            data_col_index = i
+                            break
+                    
+                    ppg_col_index = None
+                    for i, col in enumerate(header):
+                        c_low = str(col).lower()
+                        if "programa" in c_low or "ppg" in c_low or "curso" in c_low:
+                            ppg_col_index = i
+                            break
                             
-                    total_atividades += 1
-                    atividades_por_tipo[tipo] += 1
-                    
-                    if ppg_col_index is not None and len(row) > ppg_col_index:
-                        valor_ppg = str(row_padded[ppg_col_index]).strip()
-                        ppg_normalizado = normalize_ppg(valor_ppg)
-                        if ppg_normalizado in atividades_por_ppg:
-                            atividades_por_ppg[ppg_normalizado] += 1
-                        else:
-                            atividades_por_ppg["Não Identificado"] += 1
-    except Exception as e_s:
-        print(f"Aviso no carregamento paralelo do dashboard: {e_s}")
+                    for row in rows:
+                        row_padded = row + [''] * (len(header) - len(row))
+                        valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
+                        data_da_linha = parse_date_br(valor_data_completo)
+                        
+                        if filtro_selecao != "Desde o Início (Geral)":
+                            if data_da_linha and data_inicio and data_fim:
+                                if not (data_inicio <= data_da_linha <= data_fim):
+                                    continue
+                            elif not data_da_linha:
+                                continue
+                                
+                        total_atividades += 1
+                        atividades_por_tipo[tipo] += 1
+                        
+                        if ppg_col_index is not None and len(row) > ppg_col_index:
+                            valor_ppg = str(row_padded[ppg_col_index]).strip()
+                            ppg_normalizado = normalize_ppg(valor_ppg)
+                            if ppg_normalizado in atividades_por_ppg:
+                                atividades_por_ppg[ppg_normalizado] += 1
+                            else:
+                                atividades_por_ppg["Não Identificado"] += 1
+            except Exception as e_sheet:
+                print(f"Aviso ao ler planilha {sheet_id}: {e_sheet}")
+    except Exception as e_dash:
+        print(f"Aviso no dashboard: {e_dash}")
                 
         st.divider()
         col1, col2 = st.columns(2)
