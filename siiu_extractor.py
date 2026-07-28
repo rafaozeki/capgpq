@@ -504,6 +504,48 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 except Exception:
                     pass
 
+                # Extração dos dados da seção "Dados da Banca" diretamente da página HTML do discente
+                try:
+                    html_text = page.locator("body").inner_text()
+                    
+                    tese_html = re.search(r"(?:Título\s*da\s*Tese|Título\s*da\s*Dissertação)[\s:]*(.*?)(?=\n|Ano:|Orientador|Membros|Situação)", html_text, re.I)
+                    if tese_html and tese_html.group(1).strip():
+                        aluno_info['titulo_tese'] = tese_html.group(1).strip()
+                        
+                    ano_html = re.search(r"Ano[\s:]*([\d]{4})", html_text, re.I)
+                    if ano_html:
+                        aluno_info['ano_tese'] = ano_html.group(1).strip()
+                        
+                    membros_html = re.search(r"Membros\s*da\s*Banca[\s:]*(.*?)(?=\n|Homologação|Orientador|Situação)", html_text, re.I | re.DOTALL)
+                    if membros_html and membros_html.group(1).strip():
+                        aluno_info['membros_banca'] = membros_html.group(1).replace("\n", ", ").strip()
+                        
+                    sit_tese_html = re.search(r"Situação\s*da\s*Tese[\s:]*(.*?)(?=\n|Orientador|Homologação)", html_text, re.I)
+                    if sit_tese_html and sit_tese_html.group(1).strip():
+                        aluno_info['situacao_tese'] = sit_tese_html.group(1).strip()
+                        
+                    orient_html = re.search(r"Orientador[\(a\)]*[\s:]*(.*?)(?=\s{2,}|\n|Homologação|Defesa|Membros)", html_text, re.I)
+                    if orient_html and orient_html.group(1).strip():
+                        aluno_info['orientador'] = orient_html.group(1).strip()
+                        
+                    homol_html = re.search(r"Homologação\s*do\s*Título[\s:]*(.*?)(?=\n|1[ºo°]|Defesa|Orientador)", html_text, re.I)
+                    if homol_html and homol_html.group(1).strip():
+                        aluno_info['homologacao'] = homol_html.group(1).strip()
+                        
+                    l1_html = re.search(r"1[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|2[ºo°]|Defesa)", html_text, re.I)
+                    if l1_html and l1_html.group(1).strip():
+                        aluno_info['lingua_1'] = l1_html.group(1).strip()
+                        
+                    l2_html = re.search(r"2[ºo°]\s*Língua\s*Estrangeira[\s:]*(.*?)(?=\s{2,}|\n|Defesa|Membros)", html_text, re.I)
+                    if l2_html and l2_html.group(1).strip():
+                        aluno_info['lingua_2'] = l2_html.group(1).strip()
+                        
+                    defesa_html = re.search(r"Defesa[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
+                    if defesa_html:
+                        aluno_info['defesa'] = defesa_html.group(1).strip()
+                except Exception as e_html:
+                    print(f"Aviso ao ler HTML da banca: {e_html}")
+
                 current_url = page.url
                 base_url = current_url.split("?")[0].rstrip("/")
                 
@@ -515,10 +557,16 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     
                 pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
 
-                # 1. Tentar capturar o evento de download do Chromium navegando para /secretaria-imprimir
+                # 1. Capturar o download do PDF tratando 'Download is starting'
                 try:
-                    with page.expect_download(timeout=10000) as dl_info:
-                        page.goto(pdf_imprimir_url, timeout=10000)
+                    with page.expect_download(timeout=15000) as dl_info:
+                        try:
+                            page.goto(pdf_imprimir_url, timeout=15000)
+                        except Exception as e_g:
+                            if "Download is starting" in str(e_g) or "download" in str(e_g).lower():
+                                pass
+                            else:
+                                raise e_g
                     dl = dl_info.value
                     pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
                     dl.save_as(pdf_historico_path)
@@ -528,14 +576,20 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 # 2. Tentar capturar o Comprovante de Matrícula via expect_download
                 try:
                     with page.expect_download(timeout=8000) as dl_info_comp:
-                        page.goto(pdf_comprovante_url, timeout=8000)
+                        try:
+                            page.goto(pdf_comprovante_url, timeout=8000)
+                        except Exception as e_gc:
+                            if "Download is starting" in str(e_gc) or "download" in str(e_gc).lower():
+                                pass
+                            else:
+                                raise e_gc
                     dl_c = dl_info_comp.value
                     pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
                     dl_c.save_as(pdf_comprovante_path)
                 except Exception:
                     pass
 
-                # 3. Fallback via page.request.get se expect_download não capturou
+                # 3. Fallback via page.request.get se expect_download não salvou o arquivo
                 if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
                     try:
                         res_pdf = page.request.get(pdf_imprimir_url, timeout=10000)
