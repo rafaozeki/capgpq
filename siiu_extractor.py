@@ -328,26 +328,35 @@ def _search_page_logic(page, query, programa, fallback_name=None):
     prog_raw = (programa or "").strip()
     p_norm = norm(prog_raw)
     
-    mapped_target = None
-    for k, v in PPG_MAPPING_SIIU.items():
-        if k in p_norm or p_norm in k:
-            mapped_target = v
-            break
-            
-    target_name = mapped_target or prog_raw
-    t_norm = norm(target_name)
-    
     selected_option = None
-    if t_norm and t_norm != "TODOS OS PROGRAMAS":
+    if p_norm and p_norm not in ("TODOS", "TODOS OS PROGRAMAS"):
+        mapped_target = PPG_MAPPING_SIIU.get(p_norm)
+        if not mapped_target:
+            for k, v in PPG_MAPPING_SIIU.items():
+                if k in p_norm or p_norm in k:
+                    mapped_target = v
+                    break
+        target = norm(mapped_target or prog_raw)
+        
+        # 1. Busca por igualdade ou contagem de substring
         for txt, val, txt_norm in valid_options:
-            if txt_norm == t_norm or t_norm in txt_norm or txt_norm in t_norm:
+            if txt_norm == target or target in txt_norm or txt_norm in target:
                 selected_option = (txt, val)
                 break
                 
-    if not selected_option and valid_options:
-        selected_option = (valid_options[0][0], valid_options[0][1])
-
-    visited_ppgs = set()
+        # 2. Busca por interseção de palavras chave
+        if not selected_option:
+            target_words = set(target.split()) - {"DE", "EM", "E", "DO", "DA", "DOS", "DAS", "PROGRAMA", "POS", "GRADUACAO", "PPG"}
+            best_match = None
+            best_score = 0
+            for txt, val, txt_norm in valid_options:
+                opt_words = set(txt_norm.split())
+                overlap = len(target_words.intersection(opt_words))
+                if overlap > best_score:
+                    best_score = overlap
+                    best_match = (txt, val)
+            if best_match and best_score > 0:
+                selected_option = best_match
 
     def do_search_in_option(opt_tuple, search_term):
         opt_txt, opt_val = opt_tuple
@@ -433,12 +442,19 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                 })
         return found_cands
 
+    # Se um PPG específico foi solicitado pelo usuário, buscar EXCLUSIVAMENTE nele
     if selected_option:
-        visited_ppgs.add(selected_option[1])
         cands = do_search_in_option(selected_option, query)
         if cands:
             return {"status": "success", "candidates": cands}
+        elif fallback_name and query != fallback_name:
+            cands_fb = do_search_in_option(selected_option, fallback_name)
+            if cands_fb:
+                return {"status": "success", "candidates": cands_fb}
+        return {"status": "error", "message": f"Nenhum aluno encontrado no programa '{selected_option[0]}' para os critérios informados."}
 
+    # Se a busca foi para 'TODOS OS PROGRAMAS', varrer as opções disponíveis
+    visited_ppgs = set()
     for txt, val, _ in valid_options:
         if val in visited_ppgs:
             continue
@@ -446,12 +462,6 @@ def _search_page_logic(page, query, programa, fallback_name=None):
         cands = do_search_in_option((txt, val), query)
         if cands:
             return {"status": "success", "candidates": cands}
-
-    if fallback_name and query != fallback_name:
-        for txt, val, _ in valid_options:
-            cands = do_search_in_option((txt, val), fallback_name)
-            if cands:
-                return {"status": "success", "candidates": cands}
 
     try:
         dbg_url = page.url
