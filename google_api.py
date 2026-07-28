@@ -13,6 +13,20 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.readonly'
 ]
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def _find_file(filename):
+    candidates = [
+        os.path.join(BASE_DIR, filename),
+        os.path.join(os.getcwd(), filename),
+        os.path.join(os.getcwd(), "app", filename),
+        os.path.join(os.path.dirname(BASE_DIR), filename)
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return None
+
 def get_credentials():
     try:
         if "gcp_service_account" in st.secrets:
@@ -47,21 +61,30 @@ def get_credentials():
             print(f"Erro ao autenticar via google_oauth_token: {e}")
 
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
+    token_pickle_path = _find_file('token.pickle')
+    if token_pickle_path:
+        try:
+            with open(token_pickle_path, 'rb') as token:
+                creds = pickle.load(token)
+        except Exception:
+            pass
     
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if not os.path.exists('credentials.json'):
+            creds_json_path = _find_file('credentials.json')
+            if not creds_json_path:
                 raise FileNotFoundError("Arquivo credentials.json não encontrado.")
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(creds_json_path, SCOPES)
             creds = flow.run_local_server(port=0)
         
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+        save_pickle_path = token_pickle_path or os.path.join(BASE_DIR, 'token.pickle')
+        try:
+            with open(save_pickle_path, 'wb') as token:
+                pickle.dump(creds, token)
+        except Exception:
+            pass
             
     return creds
 

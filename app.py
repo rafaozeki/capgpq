@@ -7,7 +7,21 @@ import altair as alt
 from datetime import datetime, timedelta
 from google_api import get_sheets, get_sheet_data, update_sheet_cell
 
-CONFIG_FILE = 'config.json'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def find_app_file(filename):
+    candidates = [
+        os.path.join(BASE_DIR, filename),
+        os.path.join(os.getcwd(), filename),
+        os.path.join(os.getcwd(), "app", filename),
+        os.path.join(os.path.dirname(BASE_DIR), filename)
+    ]
+    for p in candidates:
+        if p and os.path.exists(p):
+            return p
+    return os.path.join(BASE_DIR, filename)
+
+CONFIG_FILE = find_app_file('config.json')
 
 PPG_MAPPING_SIIU = {
     "CIENCIAS SOCIAIS": "CIÊNCIAS SOCIAIS",
