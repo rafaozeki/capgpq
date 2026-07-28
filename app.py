@@ -577,200 +577,196 @@ def show_dashboard(config):
     except Exception as e_dash:
         print(f"Aviso no dashboard: {e_dash}")
                 
-        st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total de Solicitações Recebidas no Período", total_atividades)
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total de Solicitações Recebidas no Período", total_atividades)
+        
+    st.divider()
+    
+    # Gráficos em colunas
+    st.write("### Exibição dos Dados")
+    tipo_viz = st.radio("Selecione o formato de visualização:", ["Lista Corrida", "Gráfico de Barras", "Gráfico de Pizza"], horizontal=True)
+    st.divider()
+    
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.subheader("Volume por Tipo de Demanda")
+        if sum(atividades_por_tipo.values()) > 0:
+            df_chart = pd.DataFrame(list(atividades_por_tipo.items()), columns=["Demanda", "Quantidade"])
+            df_chart = df_chart.sort_values(by="Quantidade", ascending=False)
             
-        st.divider()
-        
-        # Gráficos em colunas
-        st.write("### Exibição dos Dados")
-        tipo_viz = st.radio("Selecione o formato de visualização:", ["Lista Corrida", "Gráfico de Barras", "Gráfico de Pizza"], horizontal=True)
-        st.divider()
-        
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            st.subheader("Volume por Tipo de Demanda")
-            if sum(atividades_por_tipo.values()) > 0:
-                df_chart = pd.DataFrame(list(atividades_por_tipo.items()), columns=["Demanda", "Quantidade"])
-                df_chart = df_chart.sort_values(by="Quantidade", ascending=False)
-                
-                if tipo_viz == "Lista Corrida":
-                    for _, row in df_chart.iterrows():
-                        st.markdown(f"- **{row['Demanda']}:** {row['Quantidade']}")
-                elif tipo_viz == "Gráfico de Barras":
-                    chart1 = alt.Chart(df_chart).mark_bar(size=25, color="#174C33", cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-                        x=alt.X('Demanda', title=None, axis=alt.Axis(labelAngle=-45)),
-                        y=alt.Y('Quantidade', title='Solicitações', axis=alt.Axis(tickMinStep=1)),
-                        tooltip=['Demanda', 'Quantidade']
-                    ).properties(height=350)
-                    st.altair_chart(chart1, use_container_width=True)
-                else: # Pizza
-                    chart1 = alt.Chart(df_chart).mark_arc(innerRadius=40).encode(
-                        theta=alt.Theta(field="Quantidade", type="quantitative"),
-                        color=alt.Color(field="Demanda", type="nominal", scale=alt.Scale(scheme='greens')),
-                        tooltip=['Demanda', 'Quantidade']
-                    ).properties(height=350)
-                    st.altair_chart(chart1, use_container_width=True)
-            else:
-                st.info("Sem dados para este período.")
-                
-        with c2:
-            st.subheader("Volume por PPG")
-            # Remover 'Não Identificado' se for zero
-            if atividades_por_ppg.get("Não Identificado") == 0:
-                del atividades_por_ppg["Não Identificado"]
-                
-            if sum(atividades_por_ppg.values()) > 0:
-                df_ppg = pd.DataFrame(list(atividades_por_ppg.items()), columns=["Programa", "Solicitações"])
-                df_ppg = df_ppg.sort_values(by="Solicitações", ascending=False)
-                
-                if tipo_viz == "Lista Corrida":
-                    for _, row in df_ppg.iterrows():
-                        st.markdown(f"- **{row['Programa']}:** {row['Solicitações']}")
-                elif tipo_viz == "Gráfico de Barras":
-                    chart2 = alt.Chart(df_ppg).mark_bar(size=25, color="#2E8B57", cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-                        x=alt.X('Programa', title=None, axis=alt.Axis(labelAngle=-45)),
-                        y=alt.Y('Solicitações', title='Solicitações', axis=alt.Axis(tickMinStep=1)),
-                        tooltip=['Programa', 'Solicitações']
-                    ).properties(height=350)
-                    st.altair_chart(chart2, use_container_width=True)
-                else: # Pizza
-                    chart2 = alt.Chart(df_ppg).mark_arc(innerRadius=40).encode(
-                        theta=alt.Theta(field="Solicitações", type="quantitative"),
-                        color=alt.Color(field="Programa", type="nominal", scale=alt.Scale(scheme='greens')),
-                        tooltip=['Programa', 'Solicitações']
-                    ).properties(height=350)
-                    st.altair_chart(chart2, use_container_width=True)
-            else:
-                st.info("Sem dados para este período.")
-                
-        st.divider()
-        st.subheader("📄 Relatório de Produtividade")
-        st.write("Gere um relatório abrangente das demandas processadas no período para impressão.")
-        
-        total = total_atividades
-        if total == 0:
-            st.warning("Não há demandas no período selecionado para gerar o relatório.")
+            if tipo_viz == "Lista Corrida":
+                for _, row in df_chart.iterrows():
+                    st.markdown(f"- **{row['Demanda']}:** {row['Quantidade']}")
+            elif tipo_viz == "Gráfico de Barras":
+                chart1 = alt.Chart(df_chart).mark_bar(size=25, color="#174C33", cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                    x=alt.X('Demanda', title=None, axis=alt.Axis(labelAngle=-45)),
+                    y=alt.Y('Quantidade', title='Solicitações', axis=alt.Axis(tickMinStep=1)),
+                    tooltip=['Demanda', 'Quantidade']
+                ).properties(height=350)
+                st.altair_chart(chart1, use_container_width=True)
+            else: # Pizza
+                chart1 = alt.Chart(df_chart).mark_arc(innerRadius=40).encode(
+                    theta=alt.Theta(field="Quantidade", type="quantitative"),
+                    color=alt.Color(field="Demanda", type="nominal", scale=alt.Scale(scheme='greens')),
+                    tooltip=['Demanda', 'Quantidade']
+                ).properties(height=350)
+                st.altair_chart(chart1, use_container_width=True)
         else:
-            media_por_servidor = total / 2
+            st.info("Sem dados para este período.")
             
-            if data_inicio and data_fim:
-                dias = (data_fim - data_inicio).days + 1
-            else:
-                dias = 30 # fallback
-                
-            semanas = max(1, dias / 7)
-            demandas_por_semana = total / semanas
+    with c2:
+        st.subheader("Volume por PPG")
+        # Remover 'Não Identificado' se for zero
+        if atividades_por_ppg.get("Não Identificado") == 0:
+            del atividades_por_ppg["Não Identificado"]
             
-            # Montagem do HTML para o Relatório
-            html_report = f"""
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <title>Relatório de Produtividade</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; margin: 40px; color: #333; }}
-                    h1 {{ color: #174C33; border-bottom: 2px solid #82bf24; padding-bottom: 10px; }}
-                    h2 {{ color: #2E8B57; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }}
-                    .metric {{ font-size: 1.2em; margin-bottom: 10px; }}
-                    .highlight {{ font-weight: bold; color: #174C33; background-color: #e8f5e9; padding: 2px 6px; border-radius: 4px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-                    th {{ background-color: #f4f8f5; color: #174C33; }}
-                    tr:nth-child(even) {{ background-color: #f9f9f9; }}
-                    @media print {{
-                        .no-print {{ display: none !important; }}
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>Relatório de Desempenho e Demanda do Setor</h1>
-                <p class="metric"><strong>Período Analisado:</strong> {dias} dias ({semanas:.1f} semanas)</p>
-                
-                <h2>1. Visão Geral de Carga de Trabalho</h2>
-                <ul>
-                    <li class="metric"><strong>Total de Demandas Solicitadas:</strong> {total}</li>
-                    <li class="metric"><strong>Média por Servidor:</strong> {media_por_servidor:.1f} demandas (Equipe de 2)</li>
-                    <li class="metric"><strong>Volume Semanal do Setor:</strong> {demandas_por_semana:.1f} demandas/semana</li>
-                    <li class="metric"><strong>Capacidade Máxima do Setor:</strong> 80 horas/semana</li>
-                </ul>
-                
-                <h2>2. Análise de Disponibilidade</h2>
-                <p>Baseado no volume de <span class="highlight">{demandas_por_semana:.1f} demandas semanais</span> frente às 80 horas de força de trabalho disponíveis na secretaria:</p>
-                <p>A média de tempo que a equipe tem disponível para dedicar a CADA solicitação (sem que a fila acumule) é de aproximadamente <span class="highlight">{(80/demandas_por_semana):.1f} horas</span>.</p>
-                <p><em>* Nota: Esta média engloba todo o tempo da jornada, devendo também comportar atendimentos avulsos, reuniões e rotinas administrativas indiretas.</em></p>
-                
-                <h2>3. Distribuição das Demandas</h2>
-                <table>
-                    <tr><th>Tipo de Demanda</th><th>Quantidade</th><th>Porcentagem</th></tr>
-            """
+        if sum(atividades_por_ppg.values()) > 0:
+            df_ppg = pd.DataFrame(list(atividades_por_ppg.items()), columns=["Programa", "Solicitações"])
+            df_ppg = df_ppg.sort_values(by="Solicitações", ascending=False)
             
-            if sum(atividades_por_tipo.values()) > 0:
-                sorted_tipos = sorted(atividades_por_tipo.items(), key=lambda item: item[1], reverse=True)
-                for tipo, qtd in sorted_tipos:
-                    perc = (qtd/total)*100
-                    html_report += f"<tr><td>{tipo}</td><td>{qtd}</td><td>{perc:.1f}%</td></tr>"
-                    
-            html_report += f"""
-                </table>
-                <br><br><br><br>
-                <hr>
-                <p style="text-align:center; font-size:0.85em; color:#777;">Relatório gerado pelo Automador CaPGPq-EFLCH em {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
-                <div class="no-print" style="text-align: center; margin-top: 30px; margin-bottom: 50px;">
-                    <button onclick="window.print()" style="padding: 12px 24px; background-color: #174C33; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🖨️ Imprimir Este Relatório</button>
-                    <p style="margin-top: 10px; color: #666; font-size: 0.9em;">(Ou pressione Ctrl+P)</p>
-                </div>
-            </body>
-            </html>
-            """
+            if tipo_viz == "Lista Corrida":
+                for _, row in df_ppg.iterrows():
+                    st.markdown(f"- **{row['Programa']}:** {row['Solicitações']}")
+            elif tipo_viz == "Gráfico de Barras":
+                chart2 = alt.Chart(df_ppg).mark_bar(size=25, color="#2E8B57", cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                    x=alt.X('Programa', title=None, axis=alt.Axis(labelAngle=-45)),
+                    y=alt.Y('Solicitações', title='Solicitações', axis=alt.Axis(tickMinStep=1)),
+                    tooltip=['Programa', 'Solicitações']
+                ).properties(height=350)
+                st.altair_chart(chart2, use_container_width=True)
+            else: # Pizza
+                chart2 = alt.Chart(df_ppg).mark_arc(innerRadius=40).encode(
+                    theta=alt.Theta(field="Solicitações", type="quantitative"),
+                    color=alt.Color(field="Programa", type="nominal", scale=alt.Scale(scheme='greens')),
+                    tooltip=['Programa', 'Solicitações']
+                ).properties(height=350)
+                st.altair_chart(chart2, use_container_width=True)
+        else:
+            st.info("Sem dados para este período.")
             
-            import streamlit.components.v1 as components
-            import json
+    st.divider()
+    st.subheader("📄 Relatório de Produtividade")
+    st.write("Gere um relatório abrangente das demandas processadas no período para impressão.")
+    
+    total = total_atividades
+    if total == 0:
+        st.warning("Não há demandas no período selecionado para gerar o relatório.")
+    else:
+        media_por_servidor = total / 2
+        
+        if data_inicio and data_fim:
+            dias = (data_fim - data_inicio).days + 1
+        else:
+            dias = 30 # fallback
             
-            safe_html_report = json.dumps(html_report)
-            
-            js_button = f"""
-            <html>
-            <head>
-                <style>
-                    .btn {{
-                        display: block;
-                        width: 100%;
-                        padding: 0.5rem 1rem;
-                        background-color: #174C33;
-                        color: white;
-                        border: none;
-                        border-radius: 0.5rem;
-                        cursor: pointer;
-                        font-family: "Source Sans Pro", sans-serif;
-                        font-size: 1rem;
-                        text-align: center;
-                    }}
-                    .btn:hover {{
-                        background-color: #0e3020;
-                    }}
-                </style>
-            </head>
-            <body style="margin: 0; padding: 0;">
-                <button class="btn" onclick="openReport()">📄 Gerar Relatório em Nova Aba</button>
-                <script>
-                function openReport() {{
-                    const htmlContent = {safe_html_report};
-                    const newWindow = window.open('', '_blank');
-                    newWindow.document.write(htmlContent);
-                    newWindow.document.close();
+        semanas = max(1, dias / 7)
+        demandas_por_semana = total / semanas
+        
+        html_report = f"""
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Relatório de Produtividade</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; color: #333; }}
+                h1 {{ color: #174C33; border-bottom: 2px solid #82bf24; padding-bottom: 10px; }}
+                h2 {{ color: #2E8B57; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }}
+                .metric {{ font-size: 1.2em; margin-bottom: 10px; }}
+                .highlight {{ font-weight: bold; color: #174C33; background-color: #e8f5e9; padding: 2px 6px; border-radius: 4px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
+                th {{ background-color: #f4f8f5; color: #174C33; }}
+                tr:nth-child(even) {{ background-color: #f9f9f9; }}
+                @media print {{
+                    .no-print {{ display: none !important; }}
                 }}
-                </script>
-            </body>
-            </html>
-            """
-            components.html(js_button, height=60)
+            </style>
+        </head>
+        <body>
+            <h1>Relatório de Desempenho e Demanda do Setor</h1>
+            <p class="metric"><strong>Período Analisado:</strong> {dias} dias ({semanas:.1f} semanas)</p>
             
-    except Exception as e:
-        st.error(f"Não foi possível carregar os dados. Verifique a autenticação ou sua conexão. Detalhes: {e}")
+            <h2>1. Visão Geral de Carga de Trabalho</h2>
+            <ul>
+                <li class="metric"><strong>Total de Demandas Solicitadas:</strong> {total}</li>
+                <li class="metric"><strong>Média por Servidor:</strong> {media_por_servidor:.1f} demandas (Equipe de 2)</li>
+                <li class="metric"><strong>Volume Semanal do Setor:</strong> {demandas_por_semana:.1f} demandas/semana</li>
+                <li class="metric"><strong>Capacidade Máxima do Setor:</strong> 80 horas/semana</li>
+            </ul>
+            
+            <h2>2. Análise de Disponibilidade</h2>
+            <p>Baseado no volume de <span class="highlight">{demandas_por_semana:.1f} demandas semanais</span> frente às 80 horas de força de trabalho disponíveis na secretaria:</p>
+            <p>A média de tempo que a equipe tem disponível para dedicar a CADA solicitação (sem que a fila acumule) é de aproximadamente <span class="highlight">{(80/demandas_por_semana):.1f} horas</span>.</p>
+            <p><em>* Nota: Esta média engloba todo o tempo da jornada, devendo também comportar atendimentos avulsos, reuniões e rotinas administrativas indiretas.</em></p>
+            
+            <h2>3. Distribuição das Demandas</h2>
+            <table>
+                <tr><th>Tipo de Demanda</th><th>Quantidade</th><th>Porcentagem</th></tr>
+        """
+        
+        if sum(atividades_por_tipo.values()) > 0:
+            sorted_tipos = sorted(atividades_por_tipo.items(), key=lambda item: item[1], reverse=True)
+            for tipo, qtd in sorted_tipos:
+                perc = (qtd/total)*100
+                html_report += f"<tr><td>{tipo}</td><td>{qtd}</td><td>{perc:.1f}%</td></tr>"
+                
+        html_report += f"""
+            </table>
+            <br><br><br><br>
+            <hr>
+            <p style="text-align:center; font-size:0.85em; color:#777;">Relatório gerado pelo Automador CaPGPq-EFLCH em {datetime.now().strftime('%d/%m/%Y %H:%M')}</p>
+            <div class="no-print" style="text-align: center; margin-top: 30px; margin-bottom: 50px;">
+                <button onclick="window.print()" style="padding: 12px 24px; background-color: #174C33; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">🖨️ Imprimir Este Relatório</button>
+                <p style="margin-top: 10px; color: #666; font-size: 0.9em;">(Ou pressione Ctrl+P)</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        import streamlit.components.v1 as components
+        import json
+        
+        safe_html_report = json.dumps(html_report)
+        
+        js_button = f"""
+        <html>
+        <head>
+            <style>
+                .btn {{
+                    display: block;
+                    width: 100%;
+                    padding: 0.5rem 1rem;
+                    background-color: #174C33;
+                    color: white;
+                    border: none;
+                    border-radius: 0.5rem;
+                    cursor: pointer;
+                    font-family: "Source Sans Pro", sans-serif;
+                    font-size: 1rem;
+                    text-align: center;
+                }}
+                .btn:hover {{
+                    background-color: #0e3020;
+                }}
+            </style>
+        </head>
+        <body style="margin: 0; padding: 0;">
+            <button class="btn" onclick="openReport()">📄 Gerar Relatório em Nova Aba</button>
+            <script>
+            function openReport() {{
+                const htmlContent = {safe_html_report};
+                const newWindow = window.open('', '_blank');
+                newWindow.document.write(htmlContent);
+                newWindow.document.close();
+            }}
+            </script>
+        </body>
+        </html>
+        """
+        components.html(js_button, height=60)
 
 
 def show_config_page(config):
