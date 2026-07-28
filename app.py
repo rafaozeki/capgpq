@@ -5,6 +5,21 @@ import re
 import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
+
+# --- DIRETIVA PORTÁTIL: Verificação Automática de Pacotes no Ambiente Portátil ---
+def auto_verify_portable_environment():
+    """Garante que todas as dependências essenciais (pdfplumber, pypdf, etc.) estejam instaladas no ambiente Python portátil."""
+    import importlib.util, subprocess, sys
+    pkgs = {"pdfplumber": "pdfplumber", "pypdf": "pypdf", "playwright": "playwright", "pandas": "pandas", "altair": "altair"}
+    missing = [pkg for mod, pkg in pkgs.items() if importlib.util.find_spec(mod) is None]
+    if missing:
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing + ["--quiet"])
+        except Exception:
+            pass
+
+auto_verify_portable_environment()
+
 from google_api import get_sheets, get_sheet_data, update_sheet_cell
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1097,23 +1112,29 @@ def show_academic_analysis():
                     st.success("✅ Nenhuma pendência encontrada com base na análise automatizada.")
             
         # Sessão de Downloads
-        if resultado.get("pdf_historico") or resultado.get("pdf_comprovante"):
+        pdf_h_path = resultado.get("pdf_historico")
+        pdf_c_path = resultado.get("pdf_comprovante")
+        
+        has_h = pdf_h_path and os.path.exists(pdf_h_path) and os.path.getsize(pdf_h_path) > 100
+        has_c = pdf_c_path and os.path.exists(pdf_c_path) and os.path.getsize(pdf_c_path) > 100
+
+        if has_h or has_c:
             st.write("---")
             st.write("#### 📄 Documentos Gerados")
             d_col1, d_col2 = st.columns(2)
             
-            if resultado.get("pdf_historico"):
+            if has_h:
                 try:
-                    with open(resultado["pdf_historico"], "rb") as f:
+                    with open(pdf_h_path, "rb") as f:
                         pdf_data = f.read()
                     with d_col1:
                         st.download_button(label="Baixar Histórico (PDF)", data=pdf_data, file_name=f"Histórico_{resultado['aluno_info'].get('nome', 'Aluno')}.pdf", mime="application/pdf", type="primary", key="btn_down_hist")
                 except Exception as e:
                     st.error(f"Erro ao ler PDF do Histórico: {e}")
                     
-            if resultado.get("pdf_comprovante"):
+            if has_c:
                 try:
-                    with open(resultado["pdf_comprovante"], "rb") as f:
+                    with open(pdf_c_path, "rb") as f:
                         pdf_data2 = f.read()
                     with d_col2:
                         st.download_button(label="Baixar Comprovante (PDF)", data=pdf_data2, file_name=f"Comprovante_{resultado['aluno_info'].get('nome', 'Aluno')}.pdf", mime="application/pdf", type="primary", key="btn_down_comp")

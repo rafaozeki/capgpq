@@ -592,6 +592,27 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             except Exception:
                 pass
 
+            if not os.path.exists(pdf_comprovante_path) or os.path.getsize(pdf_comprovante_path) < 100:
+                try:
+                    pdf_c_b64 = page.evaluate("""async (url) => {
+                        try {
+                            const r = await fetch(url);
+                            const b = await r.blob();
+                            return new Promise((res) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => res(reader.result.split(',')[1]);
+                                reader.readAsDataURL(b);
+                            });
+                        } catch(e) { return null; }
+                    }""", pdf_comprovante_url)
+                    if pdf_c_b64:
+                        import base64
+                        c_data = base64.b64decode(pdf_c_b64)
+                        with open(pdf_comprovante_path, "wb") as f_c:
+                            f_c.write(c_data)
+                except Exception as e_cb64:
+                    print(f"Aviso fetch b64 comprovante: {e_cb64}")
+
         # 4. LER O ARQUIVO PDF SALVO EM DISCO (downloads/Historico_{ra}.pdf) usando pdfplumber + pypdf
         if os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 50:
             parsed = parse_pdf_data(pdf_historico_path)
@@ -638,11 +659,14 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         except Exception as e_raw:
             debug_pdf["raw_text"] = f"Erro ao extrair texto bruto: {e_raw}"
 
+    valid_hist_pdf = pdf_historico_path if (pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100) else None
+    valid_comp_pdf = pdf_comprovante_path if (pdf_comprovante_path and os.path.exists(pdf_comprovante_path) and os.path.getsize(pdf_comprovante_path) > 100) else None
+
     return {
         "status": "success",
         "aluno_info": aluno_info,
-        "pdf_historico": pdf_historico_path,
-        "pdf_comprovante": pdf_comprovante_path,
+        "pdf_historico": valid_hist_pdf,
+        "pdf_comprovante": valid_comp_pdf,
         "historico": aluno_info.get("historico", []),
         "debug_pdf": debug_pdf
     }
