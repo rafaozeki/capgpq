@@ -166,11 +166,28 @@ def extract_relevant_data(row_data, header):
     return extracted
 
 def parse_date_br(date_str):
-    try:
-        date_part = str(date_str).strip().split(" ")[0]
-        return datetime.strptime(date_part, "%d/%m/%Y").date()
-    except:
+    if not date_str or not str(date_str).strip():
         return None
+    val_str = str(date_str).strip().split(" ")[0]
+    
+    formats = [
+        "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y",
+        "%m/%d/%Y", "%d/%m/%y", "%Y/%m/%d"
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(val_str, fmt).date()
+        except ValueError:
+            pass
+            
+    try:
+        dt = pd.to_datetime(val_str, dayfirst=True, errors='coerce')
+        if pd.notnull(dt):
+            return dt.date()
+    except Exception:
+        pass
+        
+    return None
 
 def check_password():
     """Retorna True se o usuário digitou a senha correta."""
@@ -518,50 +535,50 @@ def show_dashboard(config):
             if tipo not in atividades_por_tipo:
                 atividades_por_tipo[tipo] = 0
             
-        try:
-            data = get_sheet_data(sheet_id, info.get('aba', 'Respostas ao formulário 1'))
-            if data and len(data) > 1:
-                header = data[0]
-                rows = data[1:]
-                
-                data_col_index = None
-                for i, col in enumerate(header):
-                    if "carimbo" in str(col).lower() or str(col).strip().lower() == "data":
-                        data_col_index = i
-                        break
-                
-                ppg_col_index = None
-                for i, col in enumerate(header):
-                    if "programa" in str(col).lower() or "ppg" in str(col).lower():
-                        ppg_col_index = i
-                        break
-                        
-                for row in rows:
-                    row_padded = row + [''] * (len(header) - len(row))
-                    valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
-                    data_da_linha = parse_date_br(valor_data_completo)
+            try:
+                data = get_sheet_data(sheet_id, info.get('aba', 'Respostas ao formulário 1'))
+                if data and len(data) > 1:
+                    header = data[0]
+                    rows = data[1:]
                     
-                    if filtro_selecao != "Desde o Início (Geral)":
-                        if data_da_linha and data_inicio and data_fim:
-                            if not (data_inicio <= data_da_linha <= data_fim):
-                                continue
-                        elif not data_da_linha:
-                            continue
+                    data_col_index = None
+                    for i, col in enumerate(header):
+                        c_low = str(col).lower()
+                        if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
+                            data_col_index = i
+                            break
+                    
+                    ppg_col_index = None
+                    for i, col in enumerate(header):
+                        c_low = str(col).lower()
+                        if "programa" in c_low or "ppg" in c_low or "curso" in c_low:
+                            ppg_col_index = i
+                            break
                             
-                    total_atividades += 1
-                    atividades_por_tipo[tipo] += 1
-                    
-                    if ppg_col_index is not None and len(row) > ppg_col_index:
-                        valor_ppg = str(row_padded[ppg_col_index]).strip()
-                        ppg_normalizado = normalize_ppg(valor_ppg)
-                        if ppg_normalizado in atividades_por_ppg:
-                            atividades_por_ppg[ppg_normalizado] += 1
-                        else:
-                            atividades_por_ppg["Não Identificado"] += 1
-                    else:
-                        atividades_por_ppg["Não Identificado"] += 1
-        except Exception as e_sheet:
-            print(f"Aviso ao carregar planilha '{tipo}': {e_sheet}")
+                    for row in rows:
+                        row_padded = row + [''] * (len(header) - len(row))
+                        valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
+                        data_da_linha = parse_date_br(valor_data_completo)
+                        
+                        if filtro_selecao != "Desde o Início (Geral)":
+                            if data_da_linha and data_inicio and data_fim:
+                                if not (data_inicio <= data_da_linha <= data_fim):
+                                    continue
+                            elif not data_da_linha:
+                                continue
+                                
+                        total_atividades += 1
+                        atividades_por_tipo[tipo] += 1
+                        
+                        if ppg_col_index is not None and len(row) > ppg_col_index:
+                            valor_ppg = str(row_padded[ppg_col_index]).strip()
+                            ppg_normalizado = normalize_ppg(valor_ppg)
+                            if ppg_normalizado in atividades_por_ppg:
+                                atividades_por_ppg[ppg_normalizado] += 1
+                            else:
+                                atividades_por_ppg["Não Identificado"] += 1
+            except Exception as e_s:
+                print(f"Aviso ao ler planilha {sheet_id}: {e_s}")
                 
         st.divider()
         col1, col2 = st.columns(2)
@@ -1239,7 +1256,8 @@ def show_demand_page(sheet_id, info):
     
     data_col_index = None
     for i, col in enumerate(header):
-        if "carimbo" in str(col).lower() or str(col).strip().lower() == "data":
+        c_low = str(col).lower()
+        if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
             data_col_index = i
             break
             
@@ -1266,7 +1284,8 @@ def show_demand_page(sheet_id, info):
         data_inicio = hoje.replace(day=1)
         data_fim = hoje
     elif filtro_selecao == "Últimos 6 meses":
-        data_inicio = hoje - timedelta(days=180)
+        # Início no 1º dia de 6 meses atrás
+        data_inicio = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1)
         data_fim = hoje
     elif filtro_selecao == "Escolher uma Data Específica":
         with f_col2:
@@ -1284,11 +1303,12 @@ def show_demand_page(sheet_id, info):
         valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
         data_da_linha = parse_date_br(valor_data_completo)
         
-        if data_da_linha and data_inicio and data_fim:
-            if not (data_inicio <= data_da_linha <= data_fim):
+        if filtro_selecao != "Todas as Atividades":
+            if data_da_linha and data_inicio and data_fim:
+                if not (data_inicio <= data_da_linha <= data_fim):
+                    continue
+            elif not data_da_linha:
                 continue
-        elif filtro_selecao != "Todas as Atividades" and not data_da_linha:
-            continue
             
         count += 1
         nome_col = next((c for c in header if "nome" in str(c).lower() and "programa" not in str(c).lower()), None)
