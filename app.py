@@ -537,7 +537,7 @@ def main():
             
     # Footer
     st.markdown(
-        '<div class="footer">Criado por Rafael Kenji Ozeki e Janilton Alves Borborema | Versão 0.5 | Data: 21/07/2026</div>', 
+        '<div class="footer">Criado por Rafael Kenji Ozeki e Janilton Alves Borborema | Versão 0.7 | Data: 28/07/2026</div>', 
         unsafe_allow_html=True
     )
     # Espaço extra para não sobrepor o footer
