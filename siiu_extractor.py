@@ -338,13 +338,27 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                     break
         target = norm(mapped_target or prog_raw)
         
-        # 1. Busca por igualdade ou contagem de substring
+        # Pass 1: Igualdade exata de nome de PPG
         for txt, val, txt_norm in valid_options:
-            if txt_norm == target or target in txt_norm or txt_norm in target:
+            if txt_norm == target:
                 selected_option = (txt, val)
                 break
                 
-        # 2. Busca por interseção de palavras chave
+        # Pass 2: Palavra isolada exata (ex: "LETRAS" em "PROGRAMA DE POS-GRADUACAO EM LETRAS", ignorando unidade guarda-chuva)
+        if not selected_option:
+            for txt, val, txt_norm in valid_options:
+                if re.search(r'\b' + re.escape(target) + r'\b', txt_norm) and "ESCOLA DE FILOSOFIA" not in txt_norm:
+                    selected_option = (txt, val)
+                    break
+
+        # Pass 3: Substring fallback
+        if not selected_option:
+            for txt, val, txt_norm in valid_options:
+                if target in txt_norm:
+                    selected_option = (txt, val)
+                    break
+                
+        # Pass 4: Busca por interseção de palavras chave
         if not selected_option:
             target_words = set(target.split()) - {"DE", "EM", "E", "DO", "DA", "DOS", "DAS", "PROGRAMA", "POS", "GRADUACAO", "PPG"}
             best_match = None
