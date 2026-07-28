@@ -109,7 +109,7 @@ def init_cached_driver(login, senha):
 import gc
 
 def _run_with_playwright_page(login, senha, task_fn):
-    """Executa a task_fn(page) em um contexto isolado e estável do Playwright em contêineres."""
+    """Executa a task_fn(page) em um contexto de baixíssima memória (low-end device mode)."""
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -121,22 +121,26 @@ def _run_with_playwright_page(login, senha, task_fn):
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
+                "--enable-low-end-device-mode",
+                "--force-low-end-device-mode",
+                "--disable-site-isolation-trials",
                 "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-background-timer-throttling",
                 "--disable-backgrounding-occluded-windows",
                 "--disable-breakpad",
                 "--disable-component-extensions-with-background-pages",
-                "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process",
+                "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process,AudioServiceOutOfProcess",
                 "--disable-ipc-flooding-protection",
                 "--disable-renderer-backgrounding",
                 "--mute-audio",
-                "--js-flags=--max-old-space-size=128",
+                "--js-flags=--max-old-space-size=64",
                 "--blink-settings=imagesEnabled=false"
             ]
         )
         context = browser.new_context(
             ignore_https_errors=True,
+            viewport={"width": 800, "height": 600},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
