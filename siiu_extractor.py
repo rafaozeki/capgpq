@@ -225,12 +225,28 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                 
             historico_url = None
             try:
+                # 1. Procura em tags <a> (href ou onclick)
                 a_elems = row.locator("a").all()
                 for a_el in a_elems:
-                    h = a_el.get_attribute("href")
+                    h = a_el.get_attribute("href") or a_el.get_attribute("onclick") or a_el.get_attribute("data-href")
                     if h and h != "#":
+                        if "location" in str(h) or "href" in str(h):
+                            m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
+                            if m: h = m.group(1)
                         historico_url = h
                         break
+                
+                # 2. Se não achou em <a>, procura em <button> ou elementos com onclick
+                if not historico_url:
+                    btn_elems = row.locator("button, [onclick], [data-href]").all()
+                    for btn_el in btn_elems:
+                        h = btn_el.get_attribute("onclick") or btn_el.get_attribute("data-href") or btn_el.get_attribute("href")
+                        if h and h != "#":
+                            if "location" in str(h) or "href" in str(h):
+                                m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
+                                if m: h = m.group(1)
+                            historico_url = h
+                            break
             except Exception:
                 pass
                 
@@ -262,7 +278,18 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     """Lógica interna de extração de detalhes em uma página já autenticada do Playwright."""
+    aluno_info = {
+        "nome": candidate.get("nome", ""),
+        "matricula": candidate.get("matricula", ""),
+        "curso": candidate.get("curso", ""),
+        "nivel": candidate.get("nivel", ""),
+        "situacao": candidate.get("situacao", ""),
+        "ingresso_data": candidate.get("ingresso", "")
+    }
+
     historico_url = candidate.get("historico_url")
+    
+    # Tentar buscar a URL se não tiver
     if not historico_url:
         try:
             page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=20000)
@@ -274,87 +301,85 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             btn_p.click(force=True)
             page.wait_for_timeout(1500)
             
-            first_a = page.locator("table tbody tr a").first
+            first_a = page.locator("table tbody tr a, table tbody tr button").first
             if first_a.count() > 0:
-                historico_url = first_a.get_attribute("href")
+                historico_url = first_a.get_attribute("href") or first_a.get_attribute("onclick")
+                if historico_url and ("location" in historico_url or "href" in historico_url):
+                    m = re.search(r"['\"]([^'\"]+)['\"]", historico_url)
+                    if m: historico_url = m.group(1)
         except Exception:
             pass
 
-    if not historico_url:
-        return {"status": "error", "message": "URL de histórico não encontrada para este discente."}
-
-    if not historico_url.startswith("http"):
-        historico_url = "https://notas-propgpq.siiu.unifesp.br" + historico_url
-
-    page.goto(historico_url, timeout=25000)
-    page.wait_for_selector("body", timeout=10000)
-    close_sweetalert_overlays(page)
-    
-    debug_text = page.locator("body").inner_text()
+    debug_text = ""
     debug_url = page.url
-
-    aluno_info = {
-        "nome": candidate.get("nome", ""),
-        "matricula": candidate.get("matricula", ""),
-        "curso": candidate.get("curso", ""),
-        "nivel": candidate.get("nivel", ""),
-        "situacao": candidate.get("situacao", "")
-    }
-
-    html_content = page.content()
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    for tr in soup.find_all('tr'):
-        tds = tr.find_all('td')
-        if len(tds) >= 2:
-            label = tds[0].get_text(strip=True).replace(':', '')
-            val = tds[1].get_text(strip=True)
-            if label and val:
-                aluno_info[label] = val
-                
-    for label_elem in soup.find_all(['label', 'span', 'strong']):
-        txt = label_elem.get_text(strip=True).replace(':', '')
-        next_sib = label_elem.next_sibling
-        if next_sib and isinstance(next_sib, str) and next_sib.strip():
-            aluno_info[txt] = next_sib.strip()
-
     pdf_hist_path = None
     pdf_comp_path = None
 
-    temp_dir = os.path.join(os.getcwd(), "temp_downloads")
-    os.makedirs(temp_dir, exist_ok=True)
-
-    if baixar_historico:
+    if historico_url and historico_url != "#":
         try:
-            close_sweetalert_overlays(page)
-            hist_btn = page.locator("a[href*='imprimir'], a[href*='pdf'], button:has-text('Histórico')")
-            if hist_btn.count() > 0:
-                with page.expect_download(timeout=10000) as download_info:
-                    hist_btn.first.click(force=True)
-                download = download_info.value
-                pdf_hist_path = os.path.join(temp_dir, f"Historico_{candidate.get('matricula')}.pdf")
-                download.save_as(pdf_hist_path)
-        except Exception as e_pdf:
-            print(f"Aviso download histórico: {e_pdf}")
+            if not historico_url.startswith("http"):
+                historico_url = "https://notas-propgpq.siiu.unifesp.br" + historico_url
 
-    if baixar_comprovante:
-        try:
+            page.goto(historico_url, timeout=25000)
+            page.wait_for_selector("body", timeout=10000)
             close_sweetalert_overlays(page)
-            comp_btn = page.locator("a[href*='comprovante'], button:has-text('Comprovante')")
-            if comp_btn.count() > 0:
-                with page.expect_download(timeout=10000) as download_info:
-                    comp_btn.first.click(force=True)
-                download = download_info.value
-                pdf_comp_path = os.path.join(temp_dir, f"Comprovante_{candidate.get('matricula')}.pdf")
-                download.save_as(pdf_comp_path)
-        except Exception as e_pdf2:
-            print(f"Aviso download comprovante: {e_pdf2}")
+            
+            debug_text = page.locator("body").inner_text()
+            debug_url = page.url
 
-    if pdf_hist_path and os.path.exists(pdf_hist_path):
-        pdf_data = parse_pdf_data(pdf_hist_path)
-        for k, v in pdf_data.items():
-            if v and not aluno_info.get(k):
-                aluno_info[k] = v
+            html_content = page.content()
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            for tr in soup.find_all('tr'):
+                tds = tr.find_all('td')
+                if len(tds) >= 2:
+                    label = tds[0].get_text(strip=True).replace(':', '')
+                    val = tds[1].get_text(strip=True)
+                    if label and val:
+                        aluno_info[label] = val
+                        
+            for label_elem in soup.find_all(['label', 'span', 'strong']):
+                txt = label_elem.get_text(strip=True).replace(':', '')
+                next_sib = label_elem.next_sibling
+                if next_sib and isinstance(next_sib, str) and next_sib.strip():
+                    aluno_info[txt] = next_sib.strip()
+
+            temp_dir = os.path.join(os.getcwd(), "temp_downloads")
+            os.makedirs(temp_dir, exist_ok=True)
+
+            if baixar_historico:
+                try:
+                    close_sweetalert_overlays(page)
+                    hist_btn = page.locator("a[href*='imprimir'], a[href*='pdf'], button:has-text('Histórico')")
+                    if hist_btn.count() > 0:
+                        with page.expect_download(timeout=10000) as download_info:
+                            hist_btn.first.click(force=True)
+                        download = download_info.value
+                        pdf_hist_path = os.path.join(temp_dir, f"Historico_{candidate.get('matricula')}.pdf")
+                        download.save_as(pdf_hist_path)
+                except Exception as e_pdf:
+                    print(f"Aviso download histórico: {e_pdf}")
+
+            if baixar_comprovante:
+                try:
+                    close_sweetalert_overlays(page)
+                    comp_btn = page.locator("a[href*='comprovante'], button:has-text('Comprovante')")
+                    if comp_btn.count() > 0:
+                        with page.expect_download(timeout=10000) as download_info:
+                            comp_btn.first.click(force=True)
+                        download = download_info.value
+                        pdf_comp_path = os.path.join(temp_dir, f"Comprovante_{candidate.get('matricula')}.pdf")
+                        download.save_as(pdf_comp_path)
+                except Exception as e_pdf2:
+                    print(f"Aviso download comprovante: {e_pdf2}")
+
+            if pdf_hist_path and os.path.exists(pdf_hist_path):
+                pdf_data = parse_pdf_data(pdf_hist_path)
+                for k, v in pdf_data.items():
+                    if v and not aluno_info.get(k):
+                        aluno_info[k] = v
+        except Exception as e_det:
+            print(f"Aviso na navegação detalhada do histórico: {e_det}")
 
     return {
         "status": "success",
