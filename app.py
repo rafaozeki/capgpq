@@ -1451,119 +1451,116 @@ def show_demand_page(sheet_id, info):
                         ainfo = res_siiu.get("aluno_info", {})
                         st.markdown("#### 📊 Resultado da Conferência (Planilha vs. SIIU)")
                     
-                    # Definição dos campos a conferir conforme solicitação do usuário
-                    if is_sptrans:
-                        check_specs = [
-                            ("MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
-                            ("TÉRMINO DO CURSO", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
-                            ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
-                            ("RG / Documento", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
-                            ("Órgão emissor RG", tf['orgao_emissor']['val'], ainfo.get('rg', ''), "text", tf['orgao_emissor']['col_name'], tf['orgao_emissor']['col_idx']),
-                            ("Estado de emissão RG", tf['uf_rg']['val'], ainfo.get('rg', ''), "text", tf['uf_rg']['col_name'], tf['uf_rg']['col_idx']),
-                            ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
-                            ("Data de nascimento", tf['nascimento']['val'], ainfo.get('nascimento', ''), "date", tf['nascimento']['col_name'], tf['nascimento']['col_idx']),
-                        ]
-                    else: # EMTU
-                        check_specs = [
-                            ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
-                            ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
-                            ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
-                            ("RG ou RNE", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
-                            ("Término do Curso", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
-                        ]
+                        # Definição dos campos a conferir conforme solicitação do usuário
+                        if is_sptrans:
+                            check_specs = [
+                                ("MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                                ("TÉRMINO DO CURSO", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
+                                ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
+                                ("RG / Documento", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                                ("Órgão emissor RG", tf['orgao_emissor']['val'], ainfo.get('rg', ''), "text", tf['orgao_emissor']['col_name'], tf['orgao_emissor']['col_idx']),
+                                ("Estado de emissão RG", tf['uf_rg']['val'], ainfo.get('rg', ''), "text", tf['uf_rg']['col_name'], tf['uf_rg']['col_idx']),
+                                ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
+                                ("Data de nascimento", tf['nascimento']['val'], ainfo.get('nascimento', ''), "date", tf['nascimento']['col_name'], tf['nascimento']['col_idx']),
+                            ]
+                        else: # EMTU
+                            check_specs = [
+                                ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                                ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
+                                ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
+                                ("RG ou RNE", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                                ("Término do Curso", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
+                            ]
+                            
+                        # Tabela de Conferência
+                        for label_campo, val_plan, val_siiu, ctype, col_n, col_i in check_specs:
+                            is_ok = check_field_match(val_plan, val_siiu, check_type=ctype)
+                            status_str = "✅ Batendo" if is_ok else "⚠️ Divergência"
+                            color_bg = "#e6f4ea" if is_ok else "#fef7e0"
+                            
+                            st.markdown(f"""
+                            <div style="background-color: {color_bg}; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; border-left: 4px solid {'#34a853' if is_ok else '#fbbc04'};">
+                                <strong>{status_str} — {label_campo}:</strong><br/>
+                                📄 Planilha: <code>{val_plan or 'Vazio'}</code> | 🏛️ SIIU: <code>{val_siiu or 'Não informado'}</code>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if not is_ok and val_siiu and col_i is not None:
+                                btn_fix_k = f"btn_fix_{idx_real_na_planilha}_{col_i}"
+                                if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
+                                    try:
+                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
+                                        st.success("Planilha atualizada com sucesso! Recarregando...")
+                                        st.rerun()
+                                    except Exception as e_upd:
+                                        st.error(f"Erro ao atualizar planilha: {e_upd}")
+                                        
+                        st.divider()
+                        st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
+                        st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
                         
-                    # Tabela de Conferência
-                    table_rows_html = []
-                    for label_campo, val_plan, val_siiu, ctype, col_n, col_i in check_specs:
-                        is_ok = check_field_match(val_plan, val_siiu, check_type=ctype)
-                        status_str = "✅ Batendo" if is_ok else "⚠️ Divergência"
-                        color_bg = "#e6f4ea" if is_ok else "#fef7e0"
-                        
-                        st.markdown(f"""
-                        <div style="background-color: {color_bg}; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; border-left: 4px solid {'#34a853' if is_ok else '#fbbc04'};">
-                            <strong>{status_str} — {label_campo}:</strong><br/>
-                            📄 Planilha: <code>{val_plan or 'Vazio'}</code> | 🏛️ SIIU: <code>{val_siiu or 'Não informado'}</code>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        if not is_ok and val_siiu and col_i is not None:
-                            btn_fix_k = f"btn_fix_{idx_real_na_planilha}_{col_i}"
-                            if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
-                                try:
-                                    update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
-                                    st.success("Planilha atualizada com sucesso! Recarregando...")
-                                    st.rerun()
-                                except Exception as e_upd:
-                                    st.error(f"Erro ao atualizar planilha: {e_upd}")
+                        if is_sptrans:
+                            seq_sptrans = [
+                                ("1. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
+                                ("2. RG", tf['rg']['val'] or ainfo.get('rg', '')),
+                                ("3. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                                ("4. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
+                                ("5. Telefone Residencial", tf['tel_res']['val']),
+                                ("6. Telefone Celular", tf['tel_cel']['val']),
+                                ("7. Endereço de E-mail", tf['email']['val']),
+                                ("8. CEP", tf['cep']['val']),
+                                ("9. RUA (Logradouro)", tf['rua']['val']),
+                                ("10. Número", tf['numero']['val']),
+                                ("11. Bairro", tf['bairro']['val']),
+                                ("12. Cidade", tf['cidade']['val']),
+                                ("13. Estado", tf['estado']['val']),
+                                ("14. Complemento", tf['complemento']['val']),
+                            ]
+                            
+                            seq_cols = st.columns(2)
+                            for idx_seq, (l_seq, v_seq) in enumerate(seq_sptrans):
+                                with seq_cols[idx_seq % 2]:
+                                    st.markdown(f"**{l_seq}:**")
+                                    st.code(v_seq or "Não informado", language="text")
                                     
-                    st.divider()
-                    st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
-                    st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
-                    
-                    if is_sptrans:
-                        # ORDEM SPTRANS: Matrícula, RG, CPF, Data de Nascimento, Telefone res., Telefone cel., E-mail, CEP, RUA, Número, Bairro, Cidade, Estado, Complemento.
-                        seq_sptrans = [
-                            ("1. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
-                            ("2. RG", tf['rg']['val'] or ainfo.get('rg', '')),
-                            ("3. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
-                            ("4. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
-                            ("5. Telefone Residencial", tf['tel_res']['val']),
-                            ("6. Telefone Celular", tf['tel_cel']['val']),
-                            ("7. Endereço de E-mail", tf['email']['val']),
-                            ("8. CEP", tf['cep']['val']),
-                            ("9. RUA (Logradouro)", tf['rua']['val']),
-                            ("10. Número", tf['numero']['val']),
-                            ("11. Bairro", tf['bairro']['val']),
-                            ("12. Cidade", tf['cidade']['val']),
-                            ("13. Estado", tf['estado']['val']),
-                            ("14. Complemento", tf['complemento']['val']),
-                        ]
-                        
-                        seq_cols = st.columns(2)
-                        for idx_seq, (l_seq, v_seq) in enumerate(seq_sptrans):
-                            with seq_cols[idx_seq % 2]:
-                                st.markdown(f"**{l_seq}:**")
-                                st.code(v_seq or "Não informado", language="text")
-                                
-                    else: # EMTU
-                        # ORDEM EMTU: CPF, Nome, RG, CEP, Programa de Pós-Graduação, Frequência, Período do curso, Término do curso.
-                        seq_emtu = [
-                            ("1. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
-                            ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
-                            ("3. RG", tf['rg']['val'] or ainfo.get('rg', '')),
-                            ("4. CEP", tf['cep']['val']),
-                            ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
-                            ("6. Frequência", tf['frequencia']['val']),
-                            ("7. Período do curso", tf['periodo']['val']),
-                            ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
-                        ]
-                        
-                        seq_cols = st.columns(2)
-                        for idx_seq, (l_seq, v_seq) in enumerate(seq_emtu):
-                            with seq_cols[idx_seq % 2]:
-                                st.markdown(f"**{l_seq}:**")
-                                st.code(v_seq or "Não informado", language="text")
+                        else: # EMTU
+                            seq_emtu = [
+                                ("1. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                                ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
+                                ("3. RG", tf['rg']['val'] or ainfo.get('rg', '')),
+                                ("4. CEP", tf['cep']['val']),
+                                ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                                ("6. Frequência", tf['frequencia']['val']),
+                                ("7. Período do curso", tf['periodo']['val']),
+                                ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
+                            ]
+                            
+                            seq_cols = st.columns(2)
+                            for idx_seq, (l_seq, v_seq) in enumerate(seq_emtu):
+                                with seq_cols[idx_seq % 2]:
+                                    st.markdown(f"**{l_seq}:**")
+                                    st.code(v_seq or "Não informado", language="text")
 
-                        st.write("---")
-                        st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
-                        comp_emtu = [
-                            ("SITUAÇÃO", tf['situacao']['val']),
-                            ("Tipo de benefício", tf['beneficio']['val']),
-                            ("RUA", tf['rua']['val']),
-                            ("Número", tf['numero']['val']),
-                            ("Bairro", tf['bairro']['val']),
-                            ("Cidade", tf['cidade']['val']),
-                            ("Estado", tf['estado']['val']),
-                            ("Complemento", tf['complemento']['val']),
-                            ("Endereço de e-mail", tf['email']['val']),
-                            ("Situação cadastral", tf['sit_cadastral']['val']),
-                            ("Data do Cadastro", tf['data_cadastro']['val']),
-                        ]
-                        c_cols = st.columns(3)
-                        for idx_comp, (lc, vc) in enumerate(comp_emtu):
-                            with c_cols[idx_comp % 3]:
-                                st.markdown(f"**{lc}:**")
-                                st.code(vc or "Não informado", language="text")
+                            st.write("---")
+                            st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
+                            comp_emtu = [
+                                ("SITUAÇÃO", tf['situacao']['val']),
+                                ("Tipo de benefício", tf['beneficio']['val']),
+                                ("RUA", tf['rua']['val']),
+                                ("Número", tf['numero']['val']),
+                                ("Bairro", tf['bairro']['val']),
+                                ("Cidade", tf['cidade']['val']),
+                                ("Estado", tf['estado']['val']),
+                                ("Complemento", tf['complemento']['val']),
+                                ("Endereço de e-mail", tf['email']['val']),
+                                ("Situação cadastral", tf['sit_cadastral']['val']),
+                                ("Data do Cadastro", tf['data_cadastro']['val']),
+                            ]
+                            c_cols = st.columns(3)
+                            for idx_comp, (lc, vc) in enumerate(comp_emtu):
+                                with c_cols[idx_comp % 3]:
+                                    st.markdown(f"**{lc}:**")
+                                    st.code(vc or "Não informado", language="text")
 
     if count == 0:
         st.info("Nenhuma atividade encontrada para o filtro selecionado.")

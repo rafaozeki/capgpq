@@ -225,9 +225,12 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                 
             historico_url = None
             try:
-                hist_link = row.locator("a[href*='historico']").first
-                if hist_link.count() > 0:
-                    historico_url = hist_link.get_attribute("href")
+                a_elems = row.locator("a").all()
+                for a_el in a_elems:
+                    h = a_el.get_attribute("href")
+                    if h and h != "#":
+                        historico_url = h
+                        break
             except Exception:
                 pass
                 
@@ -260,6 +263,23 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     """Lógica interna de extração de detalhes em uma página já autenticada do Playwright."""
     historico_url = candidate.get("historico_url")
+    if not historico_url:
+        try:
+            page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=20000)
+            page.wait_for_selector("#areas_prin_codigo", timeout=10000)
+            close_sweetalert_overlays(page)
+            search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
+            search_input.fill(candidate.get("matricula", candidate.get("nome", "")))
+            btn_p = page.locator("button:has-text('Pesquisar')").first
+            btn_p.click(force=True)
+            page.wait_for_timeout(1500)
+            
+            first_a = page.locator("table tbody tr a").first
+            if first_a.count() > 0:
+                historico_url = first_a.get_attribute("href")
+        except Exception:
+            pass
+
     if not historico_url:
         return {"status": "error", "message": "URL de histórico não encontrada para este discente."}
 
