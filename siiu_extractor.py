@@ -50,77 +50,180 @@ def parse_pdf_data(pdf_path):
         return info
         
     try:
-        texto = ""
+        texto_raw = ""
+        texto_layout = ""
+        tables_text = ""
+        tables_data = []
+        
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
-                t = page.extract_text(layout=False)
-                if t: texto += t + "\n"
+                t1 = page.extract_text(layout=False)
+                if t1: texto_raw += t1 + "\n"
                 
-        cpf_match = re.search(r"CPF:\s*([\d\.\-]+)", texto, re.I)
-        if cpf_match: info['cpf'] = cpf_match.group(1).strip()
-            
-        rg_match = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", texto, re.I)
-        if rg_match: info['rg'] = rg_match.group(1).strip()
-            
-        nasc_match = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
+                t2 = page.extract_text(layout=True)
+                if t2: texto_layout += t2 + "\n"
+                
+                try:
+                    tables = page.extract_tables()
+                    for tbl in tables:
+                        if tbl:
+                            tables_data.append(tbl)
+                            for r in tbl:
+                                if r:
+                                    row_str = " | ".join(str(cell).strip() for cell in r if cell)
+                                    tables_text += row_str + "\n"
+                except Exception:
+                    pass
 
-        sexo_match = re.search(r"Sexo:\s*([^\s\n\t]+)", texto, re.I)
-        if sexo_match: info['sexo'] = sexo_match.group(1).strip()
+        texto_combined = texto_raw + "\n" + texto_layout + "\n" + tables_text
+
+        # 1. Varredura por Células de Tabelas (Key-Value)
+        for tbl in tables_data:
+            for r in tbl:
+                if not r: continue
+                for idx, cell in enumerate(r):
+                    cell_str = str(cell).strip().upper()
+                    if not cell_str: continue
+                    
+                    next_val = str(r[idx+1]).strip() if idx + 1 < len(r) and r[idx+1] else ""
+                    
+                    if ("CPF" in cell_str or "C.P.F" in cell_str) and next_val and not info.get("cpf"):
+                        m = re.search(r"[\d\.\-]+", next_val)
+                        if m: info["cpf"] = m.group(0)
+                        
+                    if ("RG" in cell_str or "RNE" in cell_str or "IDENTIDADE" in cell_str) and next_val and not info.get("rg"):
+                        m = re.search(r"[\d\.\-A-Za-z/]+", next_val)
+                        if m: info["rg"] = m.group(0)
+                        
+                    if ("NASCIMENTO" in cell_str or "NASC" in cell_str) and next_val and not info.get("nascimento"):
+                        m = re.search(r"[\d]{2}/[\d]{2}/[\d]{4}", next_val)
+                        if m: info["nascimento"] = m.group(0)
+
+                    if "SEXO" in cell_str and next_val and not info.get("sexo"):
+                        info["sexo"] = next_val
+
+                    if "NATURALIDADE" in cell_str and next_val and not info.get("naturalidade"):
+                        info["naturalidade"] = next_val
+
+                    if "FORMA DE INGRESSO" in cell_str and next_val and not info.get("forma_ingresso"):
+                        info["forma_ingresso"] = next_val
+
+                    if ("TERMINO" in cell_str or "TÉRMINO" in cell_str or "CONCLUSÃO" in cell_str) and next_val and not info.get("termino_previsto"):
+                        m = re.search(r"[\d]{2}/[\d]{2}/[\d]{4}", next_val)
+                        if m: info["termino_previsto"] = m.group(0)
+
+                    if "ORIENTADOR" in cell_str and next_val and not info.get("orientador"):
+                        info["orientador"] = next_val.replace("\n", " ")
+
+                    if "TÍTULO" in cell_str or "TITULO" in cell_str and next_val and not info.get("titulo_tese"):
+                        info["titulo_tese"] = next_val.replace("\n", " ")
+
+                    if "DEFESA" in cell_str and next_val and not info.get("defesa"):
+                        m = re.search(r"[\d]{2}/[\d]{2}/[\d]{4}", next_val)
+                        if m: info["defesa"] = m.group(0)
+
+                    if "HOMOLOGAÇÃO" in cell_str or "HOMOLOGACAO" in cell_str and next_val and not info.get("homologacao"):
+                        m = re.search(r"[\d]{2}/[\d]{2}/[\d]{4}", next_val)
+                        if m: info["homologacao"] = m.group(0)
+
+                    if "CRÉDITOS" in cell_str or "CREDITOS" in cell_str:
+                        m_digits = re.findall(r"\d+", next_val)
+                        if m_digits:
+                            if "EXIGIDO" in cell_str or "NECESSÁRIO" in cell_str or "MINIMO" in cell_str:
+                                info["creditos_necessarios"] = m_digits[0]
+                            elif "TOTAL" in cell_str or "OBTIDO" in cell_str or "CURSADO" in cell_str:
+                                info["creditos_total"] = m_digits[0]
+
+        # 2. Regex de Fallback em Texto Combinado
+        if not info.get('cpf'):
+            cpf_match = re.search(r"(?:CPF|C\.P\.F\.)[\s:]*([\d\.\-]+)", texto_combined, re.I)
+            if cpf_match:
+                info['cpf'] = cpf_match.group(1).strip()
+            else:
+                cpf_raw = re.search(r"\b(\d{3}\.\d{3}\.\d{3}\-\d{2})\b", texto_combined)
+                if cpf_raw: info['cpf'] = cpf_raw.group(1).strip()
+            
+        if not info.get('rg'):
+            rg_match = re.search(r"(?:RG|RNE|Identidade)[\s:]*([\d\.\-A-Za-z/]+)", texto_combined, re.I)
+            if rg_match: info['rg'] = rg_match.group(1).strip()
+            
+        if not info.get('nascimento'):
+            nasc_match = re.search(r"(?:Nascimento|Nasc\.?)[\s:]*([\d]{2}/[\d]{2}/[\d]{4})", texto_combined, re.I)
+            if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
+
+        if not info.get('sexo'):
+            sexo_match = re.search(r"Sexo[\s:]*([^\s\n\t\|]+)", texto_combined, re.I)
+            if sexo_match: info['sexo'] = sexo_match.group(1).strip()
         
-        nat_match = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°])", texto, re.I)
-        if nat_match: info['naturalidade'] = nat_match.group(1).strip()
+        if not info.get('naturalidade'):
+            nat_match = re.search(r"Naturalidade[\s:]*(.*?)(?=\n|CPF|RG|N[ºo°]|\||$)", texto_combined, re.I)
+            if nat_match: info['naturalidade'] = nat_match.group(1).strip()
             
-        ing_match = re.search(r"(?:Ingresso|Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if ing_match: info['ingresso'] = ing_match.group(1).strip()
+        if not info.get('ingresso'):
+            ing_match = re.search(r"(?:Ingresso|Início|Inicio)[\s:]*([\d]{2}/[\d]{2}/[\d]{4})", texto_combined, re.I)
+            if ing_match: info['ingresso'] = ing_match.group(1).strip()
         
-        forma_match = re.search(r"Forma\s*de\s*Ingresso:\s*(.*?)(?=\s{2,}|\n|Homologação|Homologacao)", texto, re.I)
-        if forma_match: info['forma_ingresso'] = forma_match.group(1).strip()
+        if not info.get('forma_ingresso'):
+            forma_match = re.search(r"Forma\s*de\s*Ingresso[\s:]*(.*?)(?=\s{2,}|\n|Homologação|Homologacao|Término|Termino|\||$)", texto_combined, re.I)
+            if forma_match: info['forma_ingresso'] = forma_match.group(1).strip()
             
-        term_match = re.search(r"Término\s*(?:Previsto)?:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if term_match: info['termino_previsto'] = term_match.group(1).strip()
+        if not info.get('termino_previsto'):
+            term_match = re.search(r"(?:Término|Termino|Conclusão|Conclusao)[\s:]*([\d]{2}/[\d]{2}/[\d]{4})", texto_combined, re.I)
+            if term_match: info['termino_previsto'] = term_match.group(1).strip()
         
-        sit_match = re.search(r"Situação:\s*(.*?)(?=\s{2,}|\n|Término|Termino)", texto, re.I)
-        if sit_match:
-            v_sit = sit_match.group(1).strip()
-            info['situacao'] = v_sit
-            info['situacao_siiu'] = v_sit
+        if not info.get('situacao'):
+            sit_match = re.search(r"Situação[\s:]*(.*?)(?=\s{2,}|\n|Término|Termino|\||$)", texto_combined, re.I)
+            if sit_match:
+                v_sit = sit_match.group(1).strip()
+                info['situacao'] = v_sit
+                info['situacao_siiu'] = v_sit
             
-        prog_match = re.search(r"Programa:\s*(.*?)(?=\s{2,}|\n|Nível|Nivel)", texto, re.I)
-        if prog_match:
-            v_prog = prog_match.group(1).strip()
-            info['programa'] = v_prog
-            info['curso'] = v_prog
+        if not info.get('programa'):
+            prog_match = re.search(r"Programa[\s:]*(.*?)(?=\s{2,}|\n|Nível|Nivel|\||$)", texto_combined, re.I)
+            if prog_match:
+                v_prog = prog_match.group(1).strip()
+                info['programa'] = v_prog
+                info['curso'] = v_prog
             
-        niv_match = re.search(r"Nível:\s*([^\n]+)", texto, re.I)
-        if niv_match: info['nivel'] = niv_match.group(1).strip()
+        if not info.get('nivel'):
+            niv_match = re.search(r"Nível[\s:]*([^\n\|]+)", texto_combined, re.I)
+            if niv_match: info['nivel'] = niv_match.group(1).strip()
             
-        homol_match = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if homol_match: info['homologacao'] = homol_match.group(1).strip()
+        if not info.get('homologacao'):
+            homol_match = re.search(r"Homologação\s*do\s*Título[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto_combined, re.I)
+            if homol_match: info['homologacao'] = homol_match.group(1).strip()
             
-        tese_match = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador)", texto, re.I | re.DOTALL)
-        if tese_match: 
-            t_val = tese_match.group(1).replace("\n", " ").strip()
-            info['titulo_tese'] = t_val if t_val else "Não informado / Em andamento"
+        if not info.get('titulo_tese'):
+            tese_match = re.search(r"(?:Título\s*da\s*Tese|Título\s*da\s*Dissertação)[\s:]*(.*?)(?=\nOrientador|Orientador|\||$)", texto_combined, re.I | re.DOTALL)
+            if tese_match: 
+                t_val = tese_match.group(1).replace("\n", " ").strip()
+                info['titulo_tese'] = t_val if t_val else "Não informado / Em andamento"
             
-        orient_match = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\s{2,}|\n|Defesa)", texto, re.I)
-        if orient_match: 
-            info['orientador'] = orient_match.group(1).replace("\n", " ").strip()
+        if not info.get('orientador'):
+            orient_match = re.search(r"Orientador[\(a\)]*[\s:]*(.*?)(?=\s{2,}|\n|Defesa|\||$)", texto_combined, re.I)
+            if orient_match: 
+                info['orientador'] = orient_match.group(1).replace("\n", " ").strip()
             
-        defesa_match = re.search(r"Defesa:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
-        if defesa_match: 
-            info['defesa'] = defesa_match.group(1).strip()
-        else:
-            info['defesa'] = "Pendente / Em andamento"
+        if not info.get('defesa'):
+            defesa_match = re.search(r"Defesa[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto_combined, re.I)
+            if defesa_match: 
+                info['defesa'] = defesa_match.group(1).strip()
+
+        if not info.get('lingua_1'):
+            l1_match = re.search(r"1[ºo°]\s*Língua\s*Estrangeira[\s:]*([A-Za-zÀ-ÿ\s]+)", texto_combined, re.I)
+            if l1_match: info['lingua_1'] = l1_match.group(1).strip()
             
-        l1_match = re.search(r"1[ºo°]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
-        if l1_match: info['lingua_1'] = l1_match.group(1).strip()
-            
-        l2_match = re.search(r"2[ºo°]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
-        if l2_match: info['lingua_2'] = l2_match.group(1).strip()
-            
-        uc_match = re.search(r"Unidade\s*Curricular.*?\n(.*?)(?=\nTotal|\nCréditos|\nResumo|\nMédia)", texto, re.I | re.DOTALL)
-        if uc_match: info['unidades_curriculares'] = uc_match.group(1).strip()
+        if not info.get('lingua_2'):
+            l2_match = re.search(r"2[ºo°]\s*Língua\s*Estrangeira[\s:]*([A-Za-zÀ-ÿ\s]+)", texto_combined, re.I)
+            if l2_match: info['lingua_2'] = l2_match.group(1).strip()
+
+        if not info.get('creditos_total'):
+            cred_t_match = re.search(r"(?:Total\s*de\s*Créditos|Créditos\s*Obtidos)[\s:]*([\d]+)", texto_combined, re.I)
+            if cred_t_match: info['creditos_total'] = cred_t_match.group(1).strip()
+
+        if not info.get('creditos_necessarios'):
+            cred_n_match = re.search(r"(?:Créditos\s*Exigidos|Créditos\s*Necessários)[\s:]*([\d]+)", texto_combined, re.I)
+            if cred_n_match: info['creditos_necessarios'] = cred_n_match.group(1).strip()
             
     except Exception as e:
         print(f"Erro ao ler PDF: {e}")
