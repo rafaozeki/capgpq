@@ -948,95 +948,102 @@ def show_academic_analysis():
     if st.session_state.get('resultado_siiu'):
         resultado = st.session_state['resultado_siiu']
         
-        # Exibir os dados extraídos
-        st.write("### Resultado da Extração Bruta:")
-        st.info("Passe o mouse sobre a caixa de texto de cada informação abaixo e clique no ícone que aparecerá no canto superior direito para copiar!")
-        
-        st.write("#### 👤 Dados Pessoais")
-        dp_col1, dp_col2, dp_col3 = st.columns(3)
-        with dp_col1:
-            st.markdown("**Nome do aluno:**")
-            st.code(resultado['aluno_info'].get('nome', ''), language="text")
-            st.markdown("**Nascimento:**")
-            st.code(resultado['aluno_info'].get('nascimento', 'Pendente...'), language="text")
-        with dp_col2:
-            st.markdown("**Sexo:**")
-            st.code(resultado['aluno_info'].get('sexo', 'Pendente...'), language="text")
-            st.markdown("**Naturalidade:**")
-            st.code(resultado['aluno_info'].get('naturalidade', 'Pendente...'), language="text")
-        with dp_col3:
-            st.markdown("**CPF:**")
-            st.code(resultado['aluno_info'].get('cpf', 'Pendente...'), language="text")
-            st.markdown("**RG/RNE:**")
-            st.code(resultado['aluno_info'].get('rg', 'Pendente...'), language="text")
-
-        st.write("#### 🎓 Dados Acadêmicos")
-        da_col1, da_col2, da_col3 = st.columns(3)
-        with da_col1:
-            st.markdown("**Matrícula:**")
-            st.code(resultado['aluno_info'].get('ra', ''), language="text")
-            st.markdown("**Início:**")
-            st.code(resultado['aluno_info'].get('ingresso', ''), language="text")
-            st.markdown("**Forma de Ingresso:**")
-            st.code(resultado['aluno_info'].get('forma_ingresso', 'Pendente...'), language="text")
-            
-        with da_col2:
-            st.markdown("**Programa:**")
-            st.code(resultado['aluno_info'].get('programa', ''), language="text")
-            st.markdown("**Término previsto:**")
-            st.code(resultado['aluno_info'].get('termino_previsto', 'Pendente...'), language="text")
-            st.markdown("**Prorrogação:**")
-            st.code(resultado['aluno_info'].get('prorrogacao', 'Pendente...'), language="text")
-            
-        with da_col3:
-            st.markdown("**Nível:**")
-            st.code(resultado['aluno_info'].get('nivel', ''), language="text")
-            st.markdown("**Situação:**")
-            st.code(resultado['aluno_info'].get('situacao_siiu', ''), language="text")
-            st.markdown("**Observações:**")
-            st.code(resultado['aluno_info'].get('observacoes', ''), language="text")
-            
-        st.write("#### 🏛️ Dados da Banca")
-        db_col1, db_col2, db_col3 = st.columns(3)
-        
-        with db_col1:
-            st.markdown("**Título da Tese:**")
-            st.code(resultado['aluno_info'].get('titulo_tese', 'Pendente...'), language="text")
-            st.markdown("**Situação:**")
-            st.code(resultado['aluno_info'].get('situacao_tese', 'Pendente...'), language="text")
-            st.markdown("**1º Língua Estrangeira:**")
-            st.code(resultado['aluno_info'].get('lingua_1', 'Pendente...'), language="text")
-            
-        with db_col2:
-            st.markdown("**Ano:**")
-            st.code(resultado['aluno_info'].get('ano_tese', 'Pendente...'), language="text")
-            st.markdown("**Orientador:**")
-            st.code(resultado['aluno_info'].get('orientador', 'Pendente...'), language="text")
-            st.markdown("**Defesa:**")
-            st.code(resultado['aluno_info'].get('defesa', 'Pendente...'), language="text")
-            st.markdown("**2º Língua Estrangeira:**")
-            st.code(resultado['aluno_info'].get('lingua_2', 'Pendente...'), language="text")
-            
-        with db_col3:
-            st.markdown("**Membros da Banca:**")
-            st.code(resultado['aluno_info'].get('membros_banca', 'Pendente...'), language="text")
-            st.markdown("**Homologação do Título:**")
-            st.code(resultado['aluno_info'].get('homologacao', 'Pendente...'), language="text")
-            
-        st.write("#### 📚 Histórico de Unidades Curriculares:")
-        if resultado.get("historico"):
-            df_hist = pd.DataFrame(resultado["historico"])
-            st.dataframe(df_hist, width='stretch')
+        if resultado.get("status") == "error":
+            st.error(f"❌ {resultado.get('message', 'Ocorreu um erro na busca do SIIU.')}")
         else:
-            st.warning("Nenhum histórico encontrado na tabela da página web.")
+            aluno_info = resultado.get('aluno_info') or resultado.get('details', {}).get('aluno_info') or {}
             
-        cr_col1, cr_col2 = st.columns(2)
-        with cr_col1:
-            st.markdown("**Total de Créditos:**")
-            st.code(resultado['aluno_info'].get('creditos_total', 'Pendente...'), language="text")
-        with cr_col2:
-            st.markdown("**Créditos Necessários:**")
-            st.code(resultado['aluno_info'].get('creditos_necessarios', 'Pendente...'), language="text")
+            if not aluno_info:
+                st.warning("⚠️ Não foi possível carregar as informações do discente.")
+            else:
+                st.write("### Resultado da Extração Bruta:")
+                st.info("Passe o mouse sobre a caixa de texto de cada informação abaixo e clique no ícone que aparecerá no canto superior direito para copiar!")
+                
+                st.write("#### 👤 Dados Pessoais")
+                dp_col1, dp_col2, dp_col3 = st.columns(3)
+                with dp_col1:
+                    st.markdown("**Nome do aluno:**")
+                    st.code(aluno_info.get('nome', ''), language="text")
+                    st.markdown("**Nascimento:**")
+                    st.code(aluno_info.get('nascimento', 'Pendente...'), language="text")
+                with dp_col2:
+                    st.markdown("**Sexo:**")
+                    st.code(aluno_info.get('sexo', 'Pendente...'), language="text")
+                    st.markdown("**Naturalidade:**")
+                    st.code(aluno_info.get('naturalidade', 'Pendente...'), language="text")
+                with dp_col3:
+                    st.markdown("**CPF:**")
+                    st.code(aluno_info.get('cpf', 'Pendente...'), language="text")
+                    st.markdown("**RG/RNE:**")
+                    st.code(aluno_info.get('rg', 'Pendente...'), language="text")
+
+                st.write("#### 🎓 Dados Acadêmicos")
+                da_col1, da_col2, da_col3 = st.columns(3)
+                with da_col1:
+                    st.markdown("**Matrícula:**")
+                    st.code(aluno_info.get('ra', '') or aluno_info.get('matricula', ''), language="text")
+                    st.markdown("**Início:**")
+                    st.code(aluno_info.get('ingresso', ''), language="text")
+                    st.markdown("**Forma de Ingresso:**")
+                    st.code(aluno_info.get('forma_ingresso', 'Pendente...'), language="text")
+                    
+                with da_col2:
+                    st.markdown("**Programa:**")
+                    st.code(aluno_info.get('programa', '') or aluno_info.get('curso', ''), language="text")
+                    st.markdown("**Término previsto:**")
+                    st.code(aluno_info.get('termino_previsto', 'Pendente...'), language="text")
+                    st.markdown("**Prorrogação:**")
+                    st.code(aluno_info.get('prorrogacao', 'Pendente...'), language="text")
+                    
+                with da_col3:
+                    st.markdown("**Nível:**")
+                    st.code(aluno_info.get('nivel', ''), language="text")
+                    st.markdown("**Situação:**")
+                    st.code(aluno_info.get('situacao_siiu', '') or aluno_info.get('situacao', ''), language="text")
+                    st.markdown("**Observações:**")
+                    st.code(aluno_info.get('observacoes', ''), language="text")
+                    
+                st.write("#### 🏛️ Dados da Banca")
+                db_col1, db_col2, db_col3 = st.columns(3)
+                
+                with db_col1:
+                    st.markdown("**Título da Tese:**")
+                    st.code(aluno_info.get('titulo_tese', 'Pendente...'), language="text")
+                    st.markdown("**Situação:**")
+                    st.code(aluno_info.get('situacao_tese', 'Pendente...'), language="text")
+                    st.markdown("**1º Língua Estrangeira:**")
+                    st.code(aluno_info.get('lingua_1', 'Pendente...'), language="text")
+                    
+                with db_col2:
+                    st.markdown("**Ano:**")
+                    st.code(aluno_info.get('ano_tese', 'Pendente...'), language="text")
+                    st.markdown("**Orientador:**")
+                    st.code(aluno_info.get('orientador', 'Pendente...'), language="text")
+                    st.markdown("**Defesa:**")
+                    st.code(aluno_info.get('defesa', 'Pendente...'), language="text")
+                    st.markdown("**2º Língua Estrangeira:**")
+                    st.code(aluno_info.get('lingua_2', 'Pendente...'), language="text")
+                    
+                with db_col3:
+                    st.markdown("**Membros da Banca:**")
+                    st.code(aluno_info.get('membros_banca', 'Pendente...'), language="text")
+                    st.markdown("**Homologação do Título:**")
+                    st.code(aluno_info.get('homologacao', 'Pendente...'), language="text")
+                    
+                st.write("#### 📚 Histórico de Unidades Curriculares:")
+                if resultado.get("historico"):
+                    df_hist = pd.DataFrame(resultado["historico"])
+                    st.dataframe(df_hist, width='stretch')
+                else:
+                    st.warning("Nenhum histórico de disciplinas encontrado.")
+                    
+                cr_col1, cr_col2 = st.columns(2)
+                with cr_col1:
+                    st.markdown("**Total de Créditos:**")
+                    st.code(aluno_info.get('creditos_total', 'Pendente...'), language="text")
+                with cr_col2:
+                    st.markdown("**Créditos Necessários:**")
+                    st.code(aluno_info.get('creditos_necessarios', 'Pendente...'), language="text")
             
         st.write("---")
         st.write("#### 🔍 Análise do Histórico")
