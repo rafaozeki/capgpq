@@ -106,12 +106,26 @@ def init_cached_driver(login, senha):
     """Mantém a assinatura compatível para o app.py."""
     return True, None
 
+import gc
+
 def _run_with_playwright_page(login, senha, task_fn):
-    """Executa a task_fn(page) em um contexto isolado do Playwright dentro da thread atual."""
+    """Executa a task_fn(page) em um contexto isolado de baixíssimo consumo de memória RAM."""
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--blink-settings=imagesEnabled=false"]
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-software-rasterizer",
+                "--no-first-run",
+                "--no-zygote",
+                "--single-process",
+                "--disable-extensions",
+                "--js-flags=--max-old-space-size=128",
+                "--blink-settings=imagesEnabled=false"
+            ]
         )
         context = browser.new_context(
             ignore_https_errors=True,
@@ -132,11 +146,16 @@ def _run_with_playwright_page(login, senha, task_fn):
             page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
             page.wait_for_selector("#areas_prin_codigo", timeout=15000)
             
-            return task_fn(page)
+            res = task_fn(page)
+            return res
         except Exception as e:
             return {"status": "error", "message": f"Erro na busca: {e}"}
         finally:
-            browser.close()
+            try:
+                browser.close()
+            except Exception:
+                pass
+            gc.collect()
 
 def _search_page_logic(page, query, programa, fallback_name=None):
     """Lógica interna de busca com suporte inteligente a seleção de PPG e varredura de fallback."""
