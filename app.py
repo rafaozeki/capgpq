@@ -895,24 +895,20 @@ def show_academic_analysis():
                         st.error(f"Erro ao autenticar no SIIU: {erro_login}")
                         init_cached_driver.clear()
                     else:
-                        search_res = siiu_extractor.search_student_candidates(login_siiu, senha_siiu, termo_busca, programa, cached_driver=cached_driver)
+                        search_res = siiu_extractor.search_and_extract_student(login_siiu, senha_siiu, termo_busca, programa, cached_driver=cached_driver)
                         
                         if search_res.get("status") == "error":
                             st.session_state['siiu_candidatos'] = None
                             st.session_state['resultado_siiu'] = search_res
                             st.rerun()
+                        elif search_res.get("single"):
+                            st.session_state['resultado_siiu'] = search_res.get("details")
+                            st.session_state['siiu_candidatos'] = None
+                            st.rerun()
                         else:
-                            candidates = search_res.get("candidates", [])
-                            if len(candidates) == 1:
-                                with st.spinner("1 registro encontrado! Extraindo dados e baixando históricos..."):
-                                    res_ext = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, candidates[0], True, True, cached_driver=cached_driver)
-                                    st.session_state['resultado_siiu'] = res_ext
-                                    st.session_state['siiu_candidatos'] = None
-                                    st.rerun()
-                            else:
-                                st.session_state['siiu_candidatos'] = candidates
-                                st.session_state['resultado_siiu'] = None
-                                st.rerun()
+                            st.session_state['siiu_candidatos'] = search_res.get("candidates", [])
+                            st.session_state['resultado_siiu'] = None
+                            st.rerun()
                 except Exception as e:
                     st.session_state['siiu_candidatos'] = None
                     st.session_state['resultado_siiu'] = {"status": "error", "message": f"Ocorreu um erro na execução do robô: {e}"}
@@ -1438,7 +1434,7 @@ def show_demand_page(sheet_id, info):
                                     if err_drv or not cached_driver:
                                         st.error(f"Erro de autenticação no SIIU: {err_drv}")
                                     else:
-                                        s_res = siiu_extractor.search_student_candidates(
+                                        s_res = siiu_extractor.search_and_extract_student(
                                             login_siiu, senha_siiu, 
                                             nome_busca, ppg_busca, 
                                             cached_driver=cached_driver,
@@ -1448,21 +1444,14 @@ def show_demand_page(sheet_id, info):
                                             st.session_state[state_key_res] = s_res
                                             st.session_state[f"cands_{idx_real_na_planilha}"] = None
                                             st.rerun()
+                                        elif s_res.get("single"):
+                                            st.session_state[state_key_res] = s_res.get("details")
+                                            st.session_state[f"cands_{idx_real_na_planilha}"] = None
+                                            st.rerun()
                                         else:
-                                            cands = s_res.get("candidates", [])
-                                            if len(cands) == 1:
-                                                ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, cands[0], True, True, cached_driver=cached_driver)
-                                                st.session_state[state_key_res] = ext_res
-                                                st.session_state[f"cands_{idx_real_na_planilha}"] = None
-                                                st.rerun()
-                                            elif len(cands) > 1:
-                                                st.session_state[f"cands_{idx_real_na_planilha}"] = cands
-                                                st.session_state[state_key_res] = None
-                                                st.rerun()
-                                            else:
-                                                st.session_state[state_key_res] = {"status": "error", "message": "Nenhum registro encontrado no SIIU."}
-                                                st.session_state[f"cands_{idx_real_na_planilha}"] = None
-                                                st.rerun()
+                                            st.session_state[f"cands_{idx_real_na_planilha}"] = s_res.get("candidates", [])
+                                            st.session_state[state_key_res] = None
+                                            st.rerun()
                                 except Exception as ex_siiu:
                                     st.error(f"Erro na conferência do SIIU: {ex_siiu}")
 

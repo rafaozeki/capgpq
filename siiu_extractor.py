@@ -471,3 +471,23 @@ def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_
     def _task(page):
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
     return _run_with_playwright_page(login, senha, _task)
+
+def search_and_extract_student(login, senha, query, programa, cached_driver=None, fallback_name=None):
+    """Busca e extrai os detalhes do discente em uma ÚNICA sessão do Playwright para economizar RAM."""
+    def _task(page):
+        search_res = _search_page_logic(page, query, programa, fallback_name)
+        if search_res.get("status") == "error":
+            return search_res
+            
+        candidates = search_res.get("candidates", [])
+        if not candidates:
+            return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
+            
+        if len(candidates) == 1:
+            ext_res = _extract_page_logic(page, candidates[0], True, True)
+            return {"status": "success", "single": True, "details": ext_res}
+        else:
+            return {"status": "success", "single": False, "candidates": candidates}
+            
+    return _run_with_playwright_page(login, senha, _task)
+
