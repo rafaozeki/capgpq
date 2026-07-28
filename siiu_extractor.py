@@ -201,40 +201,25 @@ def init_cached_driver(login, senha):
     return True, None
 
 def _run_with_playwright_page(login, senha, task_fn):
-    """Executa a task_fn(page) em um contexto isolado e estável do Playwright com 64MB V8 limit."""
+    """Executa a task_fn(page) em um contexto do Playwright com suporte a PDF e janelas do Chrome."""
+    download_dir = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_dir, exist_ok=True)
+    
     with sync_playwright() as p:
+        # Abrir o navegador Chromium visível (ou headless configurável) sem flags restritivas de PDF
         browser = p.chromium.launch(
-            headless=True,
+            headless=False,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--no-first-run",
-                "--no-zygote",
-                "--enable-low-end-device-mode",
-                "--force-low-end-device-mode",
-                "--disable-site-isolation-trials",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-breakpad",
-                "--disable-component-extensions-with-background-pages",
-                "--disable-features=TranslateUI,BlinkGenPropertyTrees,IsolateOrigins,site-per-process,AudioServiceOutOfProcess",
-                "--disable-ipc-flooding-protection",
-                "--disable-renderer-backgrounding",
-                "--mute-audio",
-                "--disk-cache-size=1",
-                "--media-cache-size=1",
-                "--js-flags=--max-old-space-size=64",
-                "--blink-settings=imagesEnabled=false"
+                "--no-first-run"
             ]
         )
         context = browser.new_context(
+            accept_downloads=True,
             ignore_https_errors=True,
-            viewport={"width": 800, "height": 600},
+            viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
