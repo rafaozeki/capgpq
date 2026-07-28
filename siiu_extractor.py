@@ -44,46 +44,10 @@ def close_sweetalert_overlays(page):
     except Exception:
         pass
 
-def parse_pdf_data(pdf_path):
+def parse_text_data(texto_full):
+    """Extrai todos os dados de cabeçalho e tabela de disciplinas a partir de uma string de texto bruto."""
     info = {}
-    if not pdf_path or not os.path.exists(pdf_path):
-        return info
-        
-    raw_texts = []
-    
-    # 1. Extração via pdfplumber (layout=False, layout=True e tabelas)
-    if pdfplumber:
-        try:
-            with pdfplumber.open(pdf_path) as pdf:
-                for p in pdf.pages:
-                    t1 = p.extract_text(layout=False)
-                    if t1: raw_texts.append(t1)
-                    t2 = p.extract_text(layout=True)
-                    if t2: raw_texts.append(t2)
-                    
-                    try:
-                        tables = p.extract_tables()
-                        for tbl in tables:
-                            for r in tbl:
-                                if r:
-                                    raw_texts.append(" | ".join(str(c).strip() for c in r if c))
-                    except Exception:
-                        pass
-        except Exception as e:
-            print(f"Erro no pdfplumber: {e}")
-            
-    # 2. Fallback via pypdf
-    try:
-        import pypdf
-        reader = pypdf.PdfReader(pdf_path)
-        for p in reader.pages:
-            t = p.extract_text()
-            if t: raw_texts.append(t)
-    except Exception:
-        pass
-
-    texto_full = "\n".join(raw_texts)
-    if not texto_full.strip():
+    if not texto_full or not texto_full.strip():
         return info
 
     texto_norm = re.sub(r'[ \t]+', ' ', texto_full)
@@ -195,6 +159,47 @@ def parse_pdf_data(pdf_path):
         info["historico"] = hist_disciplinas
         
     return info
+
+def parse_pdf_data(pdf_path):
+    info = {}
+    if not pdf_path or not os.path.exists(pdf_path):
+        return info
+        
+    raw_texts = []
+    
+    # 1. Extração via pdfplumber (layout=False, layout=True e tabelas)
+    if pdfplumber:
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                for p in pdf.pages:
+                    t1 = p.extract_text(layout=False)
+                    if t1: raw_texts.append(t1)
+                    t2 = p.extract_text(layout=True)
+                    if t2: raw_texts.append(t2)
+                    
+                    try:
+                        tables = p.extract_tables()
+                        for tbl in tables:
+                            for r in tbl:
+                                if r:
+                                    raw_texts.append(" | ".join(str(c).strip() for c in r if c))
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Erro no pdfplumber: {e}")
+            
+    # 2. Fallback via pypdf
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(pdf_path)
+        for p in reader.pages:
+            t = p.extract_text()
+            if t: raw_texts.append(t)
+    except Exception:
+        pass
+
+    texto_full = "\n".join(raw_texts)
+    return parse_text_data(texto_full)
 
 def init_cached_driver(login, senha):
     """Mantém a assinatura compatível para o app.py."""
@@ -566,7 +571,18 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             except Exception as e_h_tab:
                 print(f"Aviso ao abrir aba do Histórico: {e_h_tab}")
 
-        # Passo 3: Baixar os arquivos PDF das abas abertas via requisição autenticada
+        # Passo 3: Tentar extrair o texto diretamente da aba do Histórico aberta no Chrome
+        if h_tab:
+            try:
+                h_text = h_tab.locator("body").inner_text()
+                parsed_dom = parse_text_data(h_text)
+                if parsed_dom:
+                    for k, v in parsed_dom.items():
+                        if v: aluno_info[k] = v
+            except Exception as e_ht:
+                print(f"Aviso leitura direta h_tab: {e_ht}")
+
+        # Passo 4: Baixar os arquivos PDF das abas abertas via requisição autenticada
         try:
             res_h = page.context.request.get(pdf_imprimir_url, timeout=15000)
             h_bytes = res_h.body()
@@ -585,7 +601,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         except Exception as e_c:
             print(f"Aviso context.request comprovante: {e_c}")
 
-        # Passo 4: Fechar as abas secundárias no Chrome após o carregamento
+        # Passo 5: Fechar as abas secundárias no Chrome após a leitura dos dados
         try:
             if c_tab: c_tab.close()
             if h_tab: h_tab.close()
@@ -595,7 +611,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
 
-    # Passo 5: Ler os dados do arquivo PDF baixado usando o pdfplumber
+    # Passo 6: Ler os dados do arquivo PDF baixado usando o pdfplumber
     if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100:
         parsed = parse_pdf_data(pdf_historico_path)
         if parsed:
