@@ -1225,7 +1225,7 @@ def extract_transport_fields(row_padded, header):
     fields['nascimento'] = {"val": val, "col_name": col, "col_idx": idx}
     
     # 8. Término do Curso
-    val, col, idx = find_val(["término", "termino", "prazo", "conclusão", "conclusao"])
+    val, col, idx = find_val(["término do curso", "termino do curso", "término", "termino", "conclusão", "conclusao"], exclude=["cadastramento", "efetivação", "efetivacao", "sistema", "emtu"])
     fields['termino_curso'] = {"val": val, "col_name": col, "col_idx": idx}
     
     # 9. Telefones
