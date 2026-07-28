@@ -1109,15 +1109,32 @@ def show_academic_analysis():
 
 def extract_transport_fields(row_padded, header):
     """Extrai todos os campos relevantes da linha da planilha usando busca flexível por palavras-chave."""
+    import unicodedata
     def find_val(keywords, exclude=[]):
         for i, col in enumerate(header):
             c_low = str(col).lower().strip()
-            if any(kw in c_low for kw in keywords):
-                if not any(ex in c_low for ex in exclude):
-                    if i < len(row_padded):
-                        v = str(row_padded[i]).strip()
-                        if v:
-                            return v, str(col).strip(), i
+            c_norm = "".join(c for c in unicodedata.normalize('NFD', c_low) if unicodedata.category(c) != 'Mn')
+            
+            if any(ex in c_norm for ex in exclude):
+                continue
+            
+            matched = False
+            for kw in keywords:
+                kw_norm = "".join(c for c in unicodedata.normalize('NFD', kw.lower()) if unicodedata.category(c) != 'Mn')
+                if len(kw_norm) <= 3:
+                    pattern = r'\b' + re.escape(kw_norm) + r'\b'
+                    if re.search(pattern, c_norm):
+                        matched = True
+                        break
+                else:
+                    if kw_norm in c_norm:
+                        matched = True
+                        break
+                        
+            if matched and i < len(row_padded):
+                v = str(row_padded[i]).strip()
+                if v:
+                    return v, str(col).strip(), i
         return "", "", None
 
     fields = {}
