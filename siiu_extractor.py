@@ -452,6 +452,9 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         if u not in urls_to_try:
             urls_to_try.append(u)
 
+    download_dir = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_dir, exist_ok=True)
+
     for target_url in urls_to_try:
         if not target_url or target_url == "#":
             continue
@@ -459,109 +462,96 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
         
         try:
-            req_res = page.request.get(full_url, timeout=10000)
-            c_type = str(req_res.headers.get("content-type", "")).lower()
+            # 1. Tentar requisição HTTP direta caso a URL já seja do PDF
+            req_res = page.request.get(full_url, timeout=6000)
             body_bytes = req_res.body()
+            c_type = str(req_res.headers.get("content-type", "")).lower()
             
             if "pdf" in c_type or full_url.lower().endswith(".pdf") or body_bytes[:4] == b'%PDF':
-                download_dir = os.path.join(os.getcwd(), "downloads")
-                os.makedirs(download_dir, exist_ok=True)
                 pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
                 with open(pdf_historico_path, "wb") as f_pdf:
                     f_pdf.write(body_bytes)
-                    
-                parsed = parse_pdf_data(pdf_historico_path)
-                if parsed:
-                    for k, v in parsed.items():
-                        if v: aluno_info[k] = v
-                    break
             else:
-                html_body = req_res.text()
-                pdf_links = []
-                
-                # 1. Procurar secretaria-imprimir (Histórico Acadêmico)
-                m_hist = re.findall(r'href=["\']([^"\']*secretaria-imprimir[^"\']*)["\']', html_body, re.I)
-                for h in m_hist:
-                    pdf_links.append((h, True))
-                    
-                # 2. Procurar comprovante-matricula (Comprovante)
-                m_comp = re.findall(r'href=["\']([^"\']*comprovante-matricula[^"\']*)["\']', html_body, re.I)
-                for h in m_comp:
-                    pdf_links.append((h, False))
-                    
-                # 3. Procurar quaisquer links de PDF/imprimir
-                m_any = re.findall(r'href=["\']([^"\']*(?:imprimir|pdf|historico)[^"\']*)["\']', html_body, re.I)
-                for h in m_any:
-                    if not any(h == pl[0] for pl in pdf_links) and h != full_url:
-                        pdf_links.append((h, True))
-                        
-                for pdf_link, is_hist in pdf_links:
-                    sub_url = pdf_link if pdf_link.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{pdf_link if pdf_link.startswith('/') else '/' + pdf_link}"
-                    try:
-                        sub_res = page.request.get(sub_url, timeout=10000)
-                        sub_bytes = sub_res.body()
-                        sub_ctype = str(sub_res.headers.get("content-type", "")).lower()
-                        
-                        if "pdf" in sub_ctype or sub_bytes[:4] == b'%PDF':
-                            download_dir = os.path.join(os.getcwd(), "downloads")
-                            os.makedirs(download_dir, exist_ok=True)
-                            
-                            fname = f"Historico_{aluno_info['ra']}.pdf" if is_hist else f"Comprovante_{aluno_info['ra']}.pdf"
-                            out_p = os.path.join(download_dir, fname)
-                            
-                            with open(out_p, "wb") as f_pdf:
-                                f_pdf.write(sub_bytes)
-                                
-                            if is_hist and not pdf_historico_path:
-                                pdf_historico_path = out_p
-                            elif not is_hist and not pdf_comprovante_path:
-                                pdf_comprovante_path = out_p
-                                
-                            parsed = parse_pdf_data(out_p)
-                            if parsed:
-                                for k, v in parsed.items():
-                                    if v: aluno_info[k] = v
-                    except Exception as e_sub:
-                        print(f"Erro ao baixar link de PDF sub-HTML {pdf_link}: {e_sub}")
-                        
-                if aluno_info.get("cpf") or aluno_info.get("rg"):
-                    break
-        except Exception as e_url:
-            print(f"Erro ao processar URL {full_url}: {e_url}")
+                # 2. Navegar via Chromium para a página de detalhes do discente
+                try:
+                    page.goto(full_url, timeout=20000, wait_until="domcontentloaded")
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    pass
 
-    if not aluno_info.get("cpf") and not aluno_info.get("rg"):
-        try:
-            rows = page.locator("table tbody tr").all()
-            if rows:
-                row = rows[0]
-                clickables = row.locator("td:last-child a, td:last-child button, a, button, [onclick]").all()
+                current_url = page.url
+                base_url = current_url.split("?")[0].rstrip("/")
                 
-                for click_target in clickables:
-                    close_sweetalert_overlays(page)
-                    try:
-                        with page.expect_download(timeout=2500) as dl_info:
-                            click_target.click(force=True)
-                        dl = dl_info.value
-                        download_dir = os.path.join(os.getcwd(), "downloads")
-                        os.makedirs(download_dir, exist_ok=True)
+                # Montar a URL direta de impressão do histórico (/secretaria-imprimir)
+                if base_url.endswith("secretaria-imprimir"):
+                    pdf_imprimir_url = base_url
+                else:
+                    pdf_imprimir_url = f"{base_url}/secretaria-imprimir"
+                    
+                pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
+
+                # Tentar requisição HTTP direta à URL /secretaria-imprimir com os cookies da sessão
+                try:
+                    res_pdf = page.request.get(pdf_imprimir_url, timeout=10000)
+                    if res_pdf.body()[:4] == b'%PDF' or "pdf" in str(res_pdf.headers.get("content-type", "")).lower():
                         pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                        dl.save_as(pdf_historico_path)
-                        if os.path.exists(pdf_historico_path):
-                            parsed = parse_pdf_data(pdf_historico_path)
-                            if parsed:
-                                for k, v in parsed.items():
-                                    if v: aluno_info[k] = v
+                        with open(pdf_historico_path, "wb") as f_pdf:
+                            f_pdf.write(res_pdf.body())
+                except Exception as e_pdf_req:
+                    print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
+
+                # Tentar requisição HTTP direta ao Comprovante de Matrícula
+                try:
+                    res_comp = page.request.get(pdf_comprovante_url, timeout=10000)
+                    if res_comp.body()[:4] == b'%PDF' or "pdf" in str(res_comp.headers.get("content-type", "")).lower():
+                        pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
+                        with open(pdf_comprovante_path, "wb") as f_pdf:
+                            f_pdf.write(res_comp.body())
+                except Exception:
+                    pass
+
+                # Fallback: Se não baixou via request, procurar e clicar nos botões visíveis da página renderizada
+                if not pdf_historico_path or not os.path.exists(pdf_historico_path):
+                    links_dom = page.locator("a, button, [onclick]").all()
+                    for el in links_dom:
+                        txt = (el.inner_text() or "").strip().lower()
+                        href = (el.get_attribute("href") or el.get_attribute("onclick") or "").lower()
+                        if "secretaria-imprimir" in href or "histórico" in txt or "historico" in txt:
+                            try:
+                                close_sweetalert_overlays(page)
+                                with page.expect_download(timeout=5000) as dl_info:
+                                    el.click(force=True)
+                                dl = dl_info.value
+                                pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                                dl.save_as(pdf_historico_path)
                                 break
-                    except Exception:
-                        pass
-        except Exception as e_re:
-            print(f"Aviso no fallback de clique discente: {e_re}")
+                            except Exception:
+                                pass
+        except Exception as e_proc:
+            print(f"Erro ao processar URL do candidato: {e_proc}")
+
+        # Se conseguimos o arquivo do Histórico ou Comprovante, rodar o parser de PDF
+        if pdf_historico_path and os.path.exists(pdf_historico_path):
+            parsed = parse_pdf_data(pdf_historico_path)
+            if parsed:
+                for k, v in parsed.items():
+                    if v: aluno_info[k] = v
+                    
+        if pdf_comprovante_path and os.path.exists(pdf_comprovante_path):
+            parsed_comp = parse_pdf_data(pdf_comprovante_path)
+            if parsed_comp:
+                for k, v in parsed_comp.items():
+                    if v and not aluno_info.get(k): aluno_info[k] = v
+
+        if aluno_info.get("cpf") or aluno_info.get("rg") or aluno_info.get("sexo"):
+            break
 
     return {
         "status": "success",
         "aluno_info": aluno_info,
         "pdf_historico": pdf_historico_path,
-        "pdf_comprovante": pdf_comprovante_path
+        "pdf_comprovante": pdf_comprovante_path,
+        "historico": aluno_info.get("historico", [])
     }
 
 def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):

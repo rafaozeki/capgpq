@@ -1045,8 +1045,9 @@ def show_academic_analysis():
                     st.code(aluno_info.get('homologacao', 'Pendente...'), language="text")
                     
                 st.write("#### 📚 Histórico de Unidades Curriculares:")
-                if resultado.get("historico"):
-                    df_hist = pd.DataFrame(resultado["historico"])
+                list_hist = resultado.get("historico") or aluno_info.get("historico") or (resultado.get("details", {}).get("historico") if isinstance(resultado.get("details"), dict) else None)
+                if list_hist:
+                    df_hist = pd.DataFrame(list_hist)
                     st.dataframe(df_hist, width='stretch')
                 else:
                     st.warning("Nenhum histórico de disciplinas encontrado.")
