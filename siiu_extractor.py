@@ -557,48 +557,69 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     
                 pdf_comprovante_url = f"{base_url}/comprovante-matricula?aluno={aluno_info['ra']}"
 
-                # 1. Obter os bytes do PDF do Histórico Acadêmico via requisição direta com cookies de sessão
+                # 1. Obter o PDF executando fetch() no contexto autenticado do Chromium (Infalível)
                 try:
-                    res_pdf = page.request.get(pdf_imprimir_url, timeout=12000)
-                    body_pdf = res_pdf.body()
-                    if body_pdf[:4] == b'%PDF' or len(body_pdf) > 500:
-                        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                        with open(pdf_historico_path, "wb") as f_pdf:
-                            f_pdf.write(body_pdf)
-                except Exception as e_pdf_req:
-                    print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
+                    pdf_b64 = page.evaluate("""async (pdfUrl) => {
+                        try {
+                            const response = await fetch(pdfUrl);
+                            const blob = await response.blob();
+                            return new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                reader.readAsDataURL(blob);
+                            });
+                        } catch (e) {
+                            return null;
+                        }
+                    }""", pdf_imprimir_url)
+                    
+                    if pdf_b64:
+                        import base64
+                        pdf_bytes = base64.b64decode(pdf_b64)
+                        if b'%PDF' in pdf_bytes[:50]:
+                            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                            with open(pdf_historico_path, "wb") as f_pdf:
+                                f_pdf.write(pdf_bytes)
+                except Exception as e_ev:
+                    print(f"Aviso ao obter PDF via evaluate fetch: {e_ev}")
 
-                # 2. Obter os bytes do Comprovante de Matrícula
+                # 2. Obter o Comprovante via fetch() no Chromium
                 try:
-                    res_comp = page.request.get(pdf_comprovante_url, timeout=10000)
-                    body_comp = res_comp.body()
-                    if body_comp[:4] == b'%PDF' or len(body_comp) > 500:
-                        pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
-                        with open(pdf_comprovante_path, "wb") as f_comp:
-                            f_comp.write(body_comp)
+                    comp_b64 = page.evaluate("""async (pdfUrl) => {
+                        try {
+                            const response = await fetch(pdfUrl);
+                            const blob = await response.blob();
+                            return new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                                reader.readAsDataURL(blob);
+                            });
+                        } catch (e) {
+                            return null;
+                        }
+                    }""", pdf_comprovante_url)
+                    
+                    if comp_b64:
+                        import base64
+                        comp_bytes = base64.b64decode(comp_b64)
+                        if b'%PDF' in comp_bytes[:50]:
+                            pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
+                            with open(pdf_comprovante_path, "wb") as f_comp:
+                                f_comp.write(comp_bytes)
                 except Exception:
                     pass
 
-                # 3. Fallback: Se por alguma razão o request direto não trouxe o PDF, tentar clique com expect_download
-                if not pdf_historico_path or not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) == 0:
+                # 3. Fallback HTTP via page.request.get (verificando estritamente b'%PDF')
+                if not pdf_historico_path or not os.path.exists(pdf_historico_path):
                     try:
-                        links_dom = page.locator("a, button, [onclick]").all()
-                        for el in links_dom:
-                            txt = (el.inner_text() or "").strip().lower()
-                            href = (el.get_attribute("href") or el.get_attribute("onclick") or "").lower()
-                            if "secretaria-imprimir" in href or "histórico" in txt or "historico" in txt:
-                                try:
-                                    close_sweetalert_overlays(page)
-                                    with page.expect_download(timeout=6000) as dl_info:
-                                        el.click(force=True)
-                                    dl = dl_info.value
-                                    pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-                                    dl.save_as(pdf_historico_path)
-                                    break
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
+                        res_pdf = page.request.get(pdf_imprimir_url, timeout=12000)
+                        body_pdf = res_pdf.body()
+                        if b'%PDF' in body_pdf[:50]:
+                            pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+                            with open(pdf_historico_path, "wb") as f_pdf:
+                                f_pdf.write(body_pdf)
+                    except Exception as e_pdf_req:
+                        print(f"Aviso ao baixar PDF via request direto: {e_pdf_req}")
         except Exception as e_proc:
             print(f"Erro ao processar URL do candidato: {e_proc}")
 
