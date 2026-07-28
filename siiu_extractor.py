@@ -59,13 +59,13 @@ def parse_pdf_data(pdf_path):
         cpf_match = re.search(r"CPF:\s*([\d\.\-]+)", texto, re.I)
         if cpf_match: info['cpf'] = cpf_match.group(1).strip()
             
-        rg_match = re.search(r"RG:\s*([^\n]+)", texto, re.I)
+        rg_match = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", texto, re.I)
         if rg_match: info['rg'] = rg_match.group(1).strip()
             
         nasc_match = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
             
-        ing_match = re.search(r"Ingresso:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
+        ing_match = re.search(r"(?:Ingresso|Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if ing_match: info['ingresso'] = ing_match.group(1).strip()
             
         term_match = re.search(r"Término\s*(?:Previsto)?:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
@@ -219,27 +219,26 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                 if "Nenhum registro" in nome or "Nenhum registro" in matricula or "Selecione um programa" in nome:
                     continue
                     
+                action_urls = []
                 historico_url = None
                 try:
-                    a_elems = row.locator("a").all()
-                    for a_el in a_elems:
-                        h = a_el.get_attribute("href") or a_el.get_attribute("onclick") or a_el.get_attribute("data-href")
+                    all_clickable = row.locator("a, button, [onclick], [data-href]").all()
+                    for el in all_clickable:
+                        h = el.get_attribute("href") or el.get_attribute("onclick") or el.get_attribute("data-href") or ""
+                        txt = el.inner_text().strip()
+                        title = el.get_attribute("title") or el.get_attribute("alt") or ""
+                        
                         if h and h != "#":
                             if "location" in str(h) or "href" in str(h):
                                 m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
                                 if m: h = m.group(1)
-                            historico_url = h
-                            break
-                    if not historico_url:
-                        btn_elems = row.locator("button, [onclick], [data-href]").all()
-                        for btn_el in btn_elems:
-                            h = btn_el.get_attribute("onclick") or btn_el.get_attribute("data-href") or btn_el.get_attribute("href")
-                            if h and h != "#":
-                                if "location" in str(h) or "href" in str(h):
-                                    m = re.search(r"['\"]([^'\"]+)['\"]", str(h))
-                                    if m: h = m.group(1)
+                            action_urls.append(h)
+                            
+                            combined = (str(h) + " " + txt + " " + title).lower()
+                            if any(k in combined for k in ["historico", "pdf", "imprimir", "relatorio", "visualizar"]) and not historico_url:
                                 historico_url = h
-                                break
+                    if not historico_url and action_urls:
+                        historico_url = action_urls[0]
                 except Exception:
                     pass
                     
@@ -251,18 +250,17 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                     "ingresso": ingresso,
                     "nivel": nivel,
                     "situacao": situacao,
-                    "historico_url": historico_url
+                    "historico_url": historico_url,
+                    "action_urls": action_urls
                 })
         return found_cands
 
-    # 1. Pesquisa na opção de PPG principal
     if selected_option:
         visited_ppgs.add(selected_option[1])
         cands = do_search_in_option(selected_option, query)
         if cands:
             return {"status": "success", "candidates": cands}
 
-    # 2. Varredura de fallback em todos os demais PPGs da instituição
     for txt, val, _ in valid_options:
         if val in visited_ppgs:
             continue
@@ -271,7 +269,6 @@ def _search_page_logic(page, query, programa, fallback_name=None):
         if cands:
             return {"status": "success", "candidates": cands}
 
-    # 3. Fallback adicional se query for RA/CPF e tivermos o Nome do aluno
     if fallback_name and query != fallback_name:
         for txt, val, _ in valid_options:
             cands = do_search_in_option((txt, val), fallback_name)
@@ -287,7 +284,7 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
     return _run_with_playwright_page(login, senha, _task)
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
-    """Lógica interna de extração de detalhes navegando, clicando ou baixando o PDF do Histórico."""
+    """Lógica interna de extração de detalhes testando todas as URLs e botões de ação da tabela."""
     aluno_info = {
         "matricula": candidate.get("matricula", ""),
         "ra": candidate.get("matricula", ""),
@@ -301,81 +298,110 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     pdf_historico_path = None
     pdf_comprovante_path = None
     
-    # 1. Se tivermos a URL direta do histórico
-    historico_url = candidate.get("historico_url")
-    navigated = False
-    
-    if historico_url:
-        if not historico_url.startswith("http"):
-            historico_url = f"https://notas-propgpq.siiu.unifesp.br{historico_url if historico_url.startswith('/') else '/' + historico_url}"
+    urls_to_try = []
+    if candidate.get("historico_url"):
+        urls_to_try.append(candidate.get("historico_url"))
+    for u in candidate.get("action_urls", []):
+        if u not in urls_to_try:
+            urls_to_try.append(u)
+
+    # 1. Tenta acessar/baixar através das URLs da ação
+    for target_url in urls_to_try:
+        if not target_url or target_url == "#":
+            continue
+            
+        full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
+        
         try:
-            with page.expect_download(timeout=8000) as download_info:
-                page.goto(historico_url, timeout=25000)
+            with page.expect_download(timeout=5000) as download_info:
+                page.goto(full_url, timeout=20000)
             download = download_info.value
             download_dir = os.path.join(os.getcwd(), "downloads")
             os.makedirs(download_dir, exist_ok=True)
             pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
             download.save_as(pdf_historico_path)
-            navigated = True
+            if os.path.exists(pdf_historico_path):
+                parsed = parse_pdf_data(pdf_historico_path)
+                if parsed.get("cpf") or parsed.get("rg"):
+                    for k, v in parsed.items():
+                        if v: aluno_info[k] = v
+                    break
         except Exception:
             try:
-                page.goto(historico_url, timeout=25000)
-                page.wait_for_timeout(2000)
-                navigated = True
-            except Exception as e_nav:
-                print(f"Aviso ao ir para historico_url: {e_nav}")
+                page.goto(full_url, timeout=20000)
+                page.wait_for_timeout(1500)
+                b_text = page.locator("body").inner_text()
+                if "CPF" in b_text or "RG" in b_text:
+                    break
+            except Exception:
+                pass
 
-    # 2. Se a navegação direta falhou ou não retornou dados, re-pesquisa e clica no elemento da tabela
-    if not navigated or len(page.locator("body").inner_text()) < 200:
+    # 2. Se não conseguiu os dados via URL direta, re-pesquisa e clica nos botões da tabela
+    if not aluno_info.get("cpf") and not aluno_info.get("rg"):
         try:
             page.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
             page.wait_for_selector("#areas_prin_codigo", timeout=15000)
             
-            # Executa a busca pelo discente
             search_res = _search_page_logic(page, aluno_info['ra'] or aluno_info['nome'], aluno_info.get('curso', ''))
             
-            # Clica no link/botão do primeiro resultado
             rows = page.locator("table tbody tr").all()
             if rows:
                 row = rows[0]
-                click_target = row.locator("a, button, [onclick]").first
-                if click_target.count() > 0:
+                clickables = row.locator("td:last-child a, td:last-child button, a, button, [onclick]").all()
+                
+                for click_target in clickables:
+                    close_sweetalert_overlays(page)
                     try:
-                        with page.expect_download(timeout=8000) as dl_info:
+                        with page.expect_download(timeout=5000) as dl_info:
                             click_target.click(force=True)
                         dl = dl_info.value
                         download_dir = os.path.join(os.getcwd(), "downloads")
                         os.makedirs(download_dir, exist_ok=True)
                         pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
                         dl.save_as(pdf_historico_path)
+                        if os.path.exists(pdf_historico_path):
+                            parsed = parse_pdf_data(pdf_historico_path)
+                            if parsed.get("cpf") or parsed.get("rg"):
+                                for k, v in parsed.items():
+                                    if v: aluno_info[k] = v
+                                break
                     except Exception:
                         try:
-                            with page.context.expect_page(timeout=8000) as new_p_info:
+                            with page.context.expect_page(timeout=5000) as new_p_info:
                                 click_target.click(force=True)
                             new_page = new_p_info.value
                             new_page.wait_for_timeout(2000)
-                            page = new_page
+                            b_txt = new_page.locator("body").inner_text()
+                            if "CPF" in b_txt or "RG" in b_txt:
+                                page = new_page
+                                break
                         except Exception:
-                            click_target.click(force=True)
-                            page.wait_for_timeout(2000)
+                            try:
+                                click_target.click(force=True)
+                                page.wait_for_timeout(1500)
+                                b_txt = page.locator("body").inner_text()
+                                if "CPF" in b_txt or "RG" in b_txt:
+                                    break
+                            except Exception:
+                                pass
         except Exception as e_re:
             print(f"Aviso no fallback de clique discente: {e_re}")
 
-    # 3. Extrair dados do PDF baixado se existir
+    # 3. Extrair dados do PDF se baixado
     if pdf_historico_path and os.path.exists(pdf_historico_path):
         parsed_pdf = parse_pdf_data(pdf_historico_path)
         for k, v in parsed_pdf.items():
-            if v:
+            if v and not aluno_info.get(k):
                 aluno_info[k] = v
 
-    # 4. Complementar extraindo texto da página HTML
+    # 4. Extrair texto da página atual (se HTML)
     try:
         body_text = page.locator("body").inner_text()
         
         cpf_m = re.search(r"CPF:\s*([\d\.\-]+)", body_text, re.I)
         if cpf_m and not aluno_info.get("cpf"): aluno_info["cpf"] = cpf_m.group(1).strip()
         
-        rg_m = re.search(r"RG:\s*([^\n]+)", body_text, re.I)
+        rg_m = re.search(r"RG:\s*([\d\.\-A-Za-z/]+)", body_text, re.I)
         if rg_m and not aluno_info.get("rg"): aluno_info["rg"] = rg_m.group(1).strip()
         
         nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", body_text, re.I)
