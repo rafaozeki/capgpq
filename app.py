@@ -1700,17 +1700,21 @@ def show_demand_page(sheet_id, info):
         st.write("### 📈 Painel Executivo e Previsão de Demandas")
         st.caption("Gere um relatório abrangente contendo todas as informações da planilha no período e tipo selecionados.")
         
-        col_rep1, col_rep2, col_rep3 = st.columns(3)
+        col_rep1, col_rep2, col_rep3, col_rep4 = st.columns(4)
         with col_rep1:
-            st.metric("Total de Demandas Filtradas", f"{len(filtered_items)} registro(s)")
+            st.metric("Total de Demandas", f"{len(filtered_items)} registro(s)")
             
-        urgentes_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days <= 7)
+        vencidas_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
         with col_rep2:
-            st.metric("Demandas Urgentes (<= 7 dias)", f"{urgentes_count} demanda(s)")
+            st.metric("Vencidas (Prazo esgotado)", f"{vencidas_count} demanda(s)")
+
+        urgentes_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 0 <= (it["data_exec_parsed"] - hoje).days <= 7)
+        with col_rep3:
+            st.metric("A Vencer (0 a 7 dias)", f"{urgentes_count} demanda(s)")
             
         medio_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 8 <= (it["data_exec_parsed"] - hoje).days <= 30)
-        with col_rep3:
-            st.metric("Demandas Médio Prazo (8-30 dias)", f"{medio_count} demanda(s)")
+        with col_rep4:
+            st.metric("Médio Prazo (8 a 30 dias)", f"{medio_count} demanda(s)")
 
         st.divider()
         st.write("#### 📥 Exportar Relatório Completo (Contendo 100% das Informações da Planilha)")
@@ -1726,8 +1730,16 @@ def show_demand_page(sheet_id, info):
                 d_ex = it["data_exec_parsed"]
                 if d_ex:
                     dias_r = (d_ex - hoje).days
+                    if dias_r < 0:
+                        urg_lbl = f"VENCIDA ({abs(dias_r)} dia(s) atrás)"
+                    elif dias_r <= 7:
+                        urg_lbl = f"URGENTE ({dias_r} dia(s) restantes)"
+                    elif dias_r <= 30:
+                        urg_lbl = f"MÉDIO PRAZO ({dias_r} dia(s))"
+                    else:
+                        urg_lbl = f"REGULAR ({dias_r} dia(s))"
                     r_dict["[Previsão] Dias para Execução"] = dias_r
-                    r_dict["[Previsão] Nível de Urgência"] = "CRÍTICO (Vencida/Urgente)" if dias_r <= 7 else ("MÉDIO" if dias_r <= 30 else "REGULAR")
+                    r_dict["[Previsão] Nível de Urgência"] = urg_lbl
                 else:
                     r_dict["[Previsão] Dias para Execução"] = "N/A"
                     r_dict["[Previsão] Nível de Urgência"] = "Não informada"
@@ -1752,31 +1764,40 @@ def show_demand_page(sheet_id, info):
                 )
                 
             with b_col2:
-                import base64
                 html_print = generate_printable_report_html(df_report, info['tipo'])
-                b64_print = base64.b64encode(html_print.encode('utf-8')).decode('utf-8')
-                data_url_print = f"data:text/html;base64,{b64_print}"
+                json_html = json.dumps(html_print)
                 
-                st.markdown(
+                st.components.v1.html(
                     f"""
-                    <a href="{data_url_print}" target="_blank" style="text-decoration: none;">
-                        <button style="
+                    <div style="font-family: sans-serif; padding: 0; margin: 0;">
+                        <button onclick='
+                            var content = {json_html};
+                            var printWin = window.open("", "_blank");
+                            if (printWin) {{
+                                printWin.document.open();
+                                printWin.document.write(content);
+                                printWin.document.close();
+                            }} else {{
+                                alert("Por favor, permita popups para este site para imprimir o relatório.");
+                            }}
+                        ' style="
                             background-color: #174C33; 
                             color: #ffffff; 
                             border: 1px solid #174C33; 
                             padding: 9px 16px; 
                             border-radius: 6px; 
                             font-weight: 600; 
-                            font-family: 'Merriweather', serif; 
+                            font-size: 14px; 
                             cursor: pointer; 
                             width: 100%;
+                            height: 38px;
                             transition: all 0.2s ease-in-out;
                         " onmouseover="this.style.backgroundColor='#82bf24'; this.style.borderColor='#82bf24';" onmouseout="this.style.backgroundColor='#174C33'; this.style.borderColor='#174C33';">
                             🖨️ Imprimir Relatório
                         </button>
-                    </a>
+                    </div>
                     """,
-                    unsafe_allow_html=True
+                    height=45
                 )
         else:
             st.info("Nenhuma demanda encontrada com a combinação atual de filtros.")
