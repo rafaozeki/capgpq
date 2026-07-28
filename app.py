@@ -435,6 +435,34 @@ def show_links_page():
         st.link_button("🌐 Sistema de Atendimento SUA", "https://atendimento.unifesp.br/", use_container_width=True)
         st.link_button("🌐 Editor Joomla CaPGPq", "https://admin-ppg.unifesp.br/guarulhos/informes/solicitacao-de-documentos-academicos#emissao-de-diplomas-solicitacao-realizada-remotamente-pelo-a-discente-egress", use_container_width=True)
 
+def get_row_date(row_padded, header):
+    """Extrai e converte a data da linha priorizando a coluna de carimbo automático do formulário (evita colunas manuais vazias)."""
+    for idx, col in enumerate(header):
+        c_low = str(col).lower()
+        if "carimbo" in c_low or "timestamp" in c_low:
+            v = row_padded[idx] if idx < len(row_padded) else ""
+            d = parse_date_br(v)
+            if d:
+                return d, str(v)
+                
+    for idx, col in enumerate(header):
+        c_low = str(col).lower()
+        if "data" in c_low and "cadastro" not in c_low:
+            v = row_padded[idx] if idx < len(row_padded) else ""
+            d = parse_date_br(v)
+            if d:
+                return d, str(v)
+                
+    for idx, col in enumerate(header):
+        c_low = str(col).lower()
+        if "data" in c_low:
+            v = row_padded[idx] if idx < len(row_padded) else ""
+            d = parse_date_br(v)
+            if d:
+                return d, str(v)
+                
+    return None, ""
+
 def show_dashboard(config):
     st.title("📊 Estatísticas")
     st.write("Visão geral de todas as suas demandas recebidas.")
@@ -465,7 +493,7 @@ def show_dashboard(config):
         data_inicio = hoje.replace(day=1)
         data_fim = hoje
     elif filtro_selecao == "Últimos 6 meses":
-        data_inicio = hoje - timedelta(days=180)
+        data_inicio = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1)
         data_fim = hoje
     elif filtro_selecao == "Escolher um Período Específico":
         with f_col2:
@@ -536,13 +564,6 @@ def show_dashboard(config):
                     header = data[0]
                     rows = data[1:]
                     
-                    data_col_index = None
-                    for i, col in enumerate(header):
-                        c_low = str(col).lower()
-                        if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
-                            data_col_index = i
-                            break
-                    
                     ppg_col_index = None
                     for i, col in enumerate(header):
                         c_low = str(col).lower()
@@ -552,12 +573,12 @@ def show_dashboard(config):
                             
                     for row in rows:
                         row_padded = row + [''] * (len(header) - len(row))
-                        valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
-                        data_da_linha = parse_date_br(valor_data_completo)
+                        data_da_linha, valor_data_completo = get_row_date(row_padded, header)
                         
                         if filtro_selecao != "Desde o Início (Geral)":
                             if data_da_linha and data_inicio and data_fim:
-                                if not (data_inicio <= data_da_linha <= data_fim):
+                                d_cmp = data_da_linha.date() if isinstance(data_da_linha, datetime) else data_da_linha
+                                if not (data_inicio <= d_cmp <= data_fim):
                                     continue
                             elif not data_da_linha:
                                 continue
@@ -1247,13 +1268,6 @@ def show_demand_page(sheet_id, info):
     header = data[0]
     rows = data[1:]
     
-    data_col_index = None
-    for i, col in enumerate(header):
-        c_low = str(col).lower()
-        if "carimbo" in c_low or "data" in c_low or "timestamp" in c_low:
-            data_col_index = i
-            break
-            
     st.divider()
     
     st.write("📅 **Filtro de Período**")
@@ -1293,12 +1307,12 @@ def show_demand_page(sheet_id, info):
         
         row_padded = row + [''] * (len(header) - len(row))
         
-        valor_data_completo = row_padded[data_col_index] if data_col_index is not None else ""
-        data_da_linha = parse_date_br(valor_data_completo)
+        data_da_linha, valor_data_completo = get_row_date(row_padded, header)
         
         if filtro_selecao != "Todas as Atividades":
             if data_da_linha and data_inicio and data_fim:
-                if not (data_inicio <= data_da_linha <= data_fim):
+                d_cmp = data_da_linha.date() if isinstance(data_da_linha, datetime) else data_da_linha
+                if not (data_inicio <= d_cmp <= data_fim):
                     continue
             elif not data_da_linha:
                 continue
