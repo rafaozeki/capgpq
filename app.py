@@ -225,16 +225,8 @@ def main():
     
     config = load_json(CONFIG_FILE)
     
-    demand_options = []
-    if config:
-        st.sidebar.markdown("**Módulos:**")
-        for sheet_id, info in config.items():
-            demand_options.append(info.get('tipo', 'Demanda'))
-            
-        demand_options = sorted(list(set(demand_options)))
-        
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = demand_options[0] if demand_options else "Estatísticas"
+        st.session_state.current_page = "Estatísticas"
     
     st.sidebar.markdown(
         """
@@ -245,31 +237,42 @@ def main():
         """, unsafe_allow_html=True
     )
     
-    st.sidebar.markdown("**Navegação Módulos:**")
+    # 1. Painel de Controle
+    st.sidebar.markdown("**Painel de Controle:**")
+    panel_btn_type = "primary" if st.session_state.current_page == "Estatísticas" else "secondary"
+    if st.sidebar.button("📊 Estatísticas", type=panel_btn_type, use_container_width=True):
+        st.session_state.current_page = "Estatísticas"
+        
+    links_btn_type = "primary" if st.session_state.current_page == "🔗 Links Úteis" else "secondary"
+    if st.sidebar.button("🔗 Links Úteis", type=links_btn_type, use_container_width=True):
+        st.session_state.current_page = "🔗 Links Úteis"
+        
+    polare_btn_type = "primary" if st.session_state.current_page == "📝 Polare" else "secondary"
+    if st.sidebar.button("📝 Polare", type=polare_btn_type, use_container_width=True):
+        st.session_state.current_page = "📝 Polare"
+        
+    academic_btn_type = "primary" if st.session_state.current_page == "🎓 Análise de Históricos" else "secondary"
+    if st.sidebar.button("🎓 Análise de Históricos", type=academic_btn_type, use_container_width=True):
+        st.session_state.current_page = "🎓 Análise de Históricos"
+        
+    st.sidebar.divider()
+    
+    # 2. Módulos das planilhas
+    demand_options = []
+    if config:
+        st.sidebar.markdown("**Módulos:**")
+        for sheet_id, info in config.items():
+            demand_options.append(info.get('tipo', 'Demanda'))
+        demand_options = sorted(list(set(demand_options)))
+            
     for option in demand_options:
         btn_type = "primary" if st.session_state.current_page == option else "secondary"
         if st.sidebar.button(option, type=btn_type, use_container_width=True):
             st.session_state.current_page = option
             
     st.sidebar.divider()
-    st.sidebar.markdown("**Painel & Ferramentas:**")
     
-    panel_btn_type = "primary" if st.session_state.current_page == "Estatísticas" else "secondary"
-    if st.sidebar.button("📊 Estatísticas Geral", type=panel_btn_type, use_container_width=True):
-        st.session_state.current_page = "Estatísticas"
-        
-    academic_btn_type = "primary" if st.session_state.current_page == "🎓 Análise de Históricos" else "secondary"
-    if st.sidebar.button("🎓 Análise de Históricos", type=academic_btn_type, use_container_width=True):
-        st.session_state.current_page = "🎓 Análise de Históricos"
-        
-    polare_btn_type = "primary" if st.session_state.current_page == "📝 Polare" else "secondary"
-    if st.sidebar.button("📝 Polare", type=polare_btn_type, use_container_width=True):
-        st.session_state.current_page = "📝 Polare"
-        
-    links_btn_type = "primary" if st.session_state.current_page == "🔗 Links Úteis" else "secondary"
-    if st.sidebar.button("🔗 Links Úteis", type=links_btn_type, use_container_width=True):
-        st.session_state.current_page = "🔗 Links Úteis"
-        
+    # 3. Configurações
     config_btn_type = "primary" if st.session_state.current_page == "⚙️ Configurações" else "secondary"
     if st.sidebar.button("⚙️ Configurações", type=config_btn_type, use_container_width=True):
         st.session_state.current_page = "⚙️ Configurações"
