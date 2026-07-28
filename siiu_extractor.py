@@ -262,17 +262,26 @@ def _search_page_logic(page, query, programa, fallback_name=None):
         close_sweetalert_overlays(page)
         
         search_input = page.locator("input[name='descricao'], input#descricao, input[placeholder*='Nome']").first
-        search_input.fill(search_term)
+        if search_input.count() > 0:
+            search_input.fill(search_term)
+            try:
+                search_input.press("Enter")
+            except Exception:
+                pass
         
         close_sweetalert_overlays(page)
         
         btn_pesquisar = page.locator("button:has-text('Pesquisar'), [data-filter-pesquisar], button[type='submit']").first
-        try:
-            btn_pesquisar.click(force=True)
-        except Exception:
-            page.evaluate("el => el.click()", btn_pesquisar.element_handle())
+        if btn_pesquisar.count() > 0:
+            try:
+                btn_pesquisar.click(force=True)
+            except Exception:
+                try:
+                    page.evaluate("el => el.click()", btn_pesquisar.element_handle())
+                except Exception:
+                    pass
         
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(2000)
         
         rows = page.locator("table tbody tr").all()
         found_cands = []
@@ -346,7 +355,19 @@ def _search_page_logic(page, query, programa, fallback_name=None):
             if cands:
                 return {"status": "success", "candidates": cands}
 
-    return {"status": "error", "message": "Nenhum aluno encontrado para os critérios informados."}
+    try:
+        dbg_url = page.url
+        dbg_text = page.locator("body").inner_text()[:1000]
+    except Exception:
+        dbg_url = "N/A"
+        dbg_text = "N/A"
+
+    return {
+        "status": "error",
+        "message": "Nenhum aluno encontrado para os critérios informados.",
+        "debug_url": dbg_url,
+        "debug_text": dbg_text
+    }
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     """Lógica interna de extração de detalhes navegando e baixando o PDF do Histórico."""
