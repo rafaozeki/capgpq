@@ -137,9 +137,14 @@ def init_cached_driver(login, senha):
         _page_instance.fill("#username", login)
         _page_instance.fill("#password", senha)
         _page_instance.click("button[type='submit']")
+        _page_instance.wait_for_timeout(2000)
         
-        # Aguardar carregamento da sessão
-        _page_instance.wait_for_url("**/portal-secretaria/**", timeout=20000)
+        body_text = _page_instance.locator("body").inner_text()
+        if "incorreto" in body_text.lower() or "inválid" in body_text.lower() or "credencial" in body_text.lower():
+            return None, "Usuário e/ou senha do SIIU incorretos. Verifique suas credenciais."
+            
+        _page_instance.goto("https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes", timeout=25000)
+        _page_instance.wait_for_selector("#areas_prin_codigo", timeout=15000)
         
         _logged_in_user = login
         return _page_instance, None
