@@ -124,6 +124,13 @@ def parse_pdf_data(pdf_path):
             
     except Exception as e:
         print(f"Erro ao ler PDF: {e}")
+    finally:
+        try:
+            if pdf_path and os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except Exception:
+            pass
+        gc.collect()
         
     return info
 

@@ -74,7 +74,7 @@ def get_sheets():
     items = results.get('files', [])
     return items
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False, max_entries=5)
 def get_sheet_data(spreadsheet_id, range_name='Respostas ao formulário 1'):
     """Busca os dados de uma planilha e aba específicos com cache temporário de 5 minutos e fallback automático."""
     creds = get_credentials()
