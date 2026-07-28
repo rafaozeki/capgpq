@@ -391,7 +391,7 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                     for el in all_clickable:
                         h = el.get_attribute("href") or el.get_attribute("onclick") or el.get_attribute("data-href") or ""
                         txt = el.inner_text().strip()
-                        title = el.get_attribute("title") or el.get_attribute("alt") or ""
+                        title = el.get_attribute("title") or el.get_attribute("data-original-title") or el.get_attribute("alt") or ""
                         
                         if h and h != "#":
                             if "location" in str(h) or "href" in str(h):
@@ -400,7 +400,7 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                             action_urls.append(h)
                             
                             combined = (str(h) + " " + txt + " " + title).lower()
-                            if any(k in combined for k in ["historico", "pdf", "imprimir", "relatorio", "visualizar"]) and not historico_url:
+                            if any(k in combined for k in ["historico", "pdf", "imprimir", "relatorio", "visualizar", "abrir histórico"]) and not historico_url:
                                 historico_url = h
                     if not historico_url and action_urls:
                         historico_url = action_urls[0]
