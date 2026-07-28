@@ -533,7 +533,40 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
         pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
 
-        # 3. Baixar os PDFs usando o page.context.request da sessão ativa
+        c_tab = None
+        h_tab = None
+
+        # Passo 1: Abrir a aba do Comprovante de Matrícula no Chrome
+        if baixar_comprovante:
+            try:
+                close_sweetalert_overlays(page)
+                comp_btn = page.locator("a[href*='comprovante-matricula'], a:has-text('Comprovante')").first
+                if comp_btn.count() > 0:
+                    with page.context.expect_page(timeout=6000) as comp_tab_info:
+                        comp_btn.click(force=True)
+                    c_tab = comp_tab_info.value
+                    c_tab.wait_for_timeout(1500)
+                else:
+                    page.evaluate(f"window.open('{pdf_comprovante_url}', '_blank');")
+            except Exception as e_c_tab:
+                print(f"Aviso ao abrir aba do Comprovante: {e_c_tab}")
+
+        # Passo 2: Abrir a aba do Histórico Acadêmico no Chrome
+        if baixar_historico:
+            try:
+                close_sweetalert_overlays(page)
+                imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
+                if imprimir_btn.count() > 0:
+                    with page.context.expect_page(timeout=6000) as hist_tab_info:
+                        imprimir_btn.click(force=True)
+                    h_tab = hist_tab_info.value
+                    h_tab.wait_for_timeout(1500)
+                else:
+                    page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
+            except Exception as e_h_tab:
+                print(f"Aviso ao abrir aba do Histórico: {e_h_tab}")
+
+        # Passo 3: Baixar os arquivos PDF das abas abertas via requisição autenticada
         try:
             res_h = page.context.request.get(pdf_imprimir_url, timeout=15000)
             h_bytes = res_h.body()
@@ -552,40 +585,17 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         except Exception as e_c:
             print(f"Aviso context.request comprovante: {e_c}")
 
-        # 4. Abrir visualmente no Chrome a aba do Comprovante de Matrícula (se o usuário escolheu)
-        if baixar_comprovante:
-            try:
-                close_sweetalert_overlays(page)
-                comp_btn = page.locator("a[href*='comprovante-matricula'], a:has-text('Comprovante')").first
-                if comp_btn.count() > 0:
-                    with page.context.expect_page(timeout=5000) as comp_tab_info:
-                        comp_btn.click(force=True)
-                    c_tab = comp_tab_info.value
-                    c_tab.wait_for_timeout(1000)
-                else:
-                    page.evaluate(f"window.open('{pdf_comprovante_url}', '_blank');")
-            except Exception as e_c_tab:
-                print(f"Aviso ao abrir aba do Comprovante: {e_c_tab}")
+        # Passo 4: Fechar as abas secundárias no Chrome após o carregamento
+        try:
+            if c_tab: c_tab.close()
+            if h_tab: h_tab.close()
+        except Exception:
+            pass
 
-        # 5. Abrir visualmente no Chrome a aba do Histórico Acadêmico (se o usuário escolheu)
-        if baixar_historico:
-            try:
-                close_sweetalert_overlays(page)
-                imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
-                if imprimir_btn.count() > 0:
-                    with page.context.expect_page(timeout=5000) as hist_tab_info:
-                        imprimir_btn.click(force=True)
-                    h_tab = hist_tab_info.value
-                    h_tab.wait_for_timeout(1000)
-                else:
-                    page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
-            except Exception as e_h_tab:
-                print(f"Aviso ao abrir aba do Histórico: {e_h_tab}")
-            
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
 
-    # 4. Ler os dados do arquivo PDF salvo em downloads/ usando o pdfplumber
+    # Passo 5: Ler os dados do arquivo PDF baixado usando o pdfplumber
     if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100:
         parsed = parse_pdf_data(pdf_historico_path)
         if parsed:
