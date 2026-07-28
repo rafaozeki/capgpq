@@ -1706,7 +1706,7 @@ def show_demand_page(sheet_id, info):
             
         vencidas_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
         with col_rep2:
-            st.metric("Vencidas (Prazo esgotado)", f"{vencidas_count} demanda(s)")
+            st.metric("Expiradas", f"{vencidas_count} demanda(s)")
 
         urgentes_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 0 <= (it["data_exec_parsed"] - hoje).days <= 7)
         with col_rep3:
@@ -1731,7 +1731,7 @@ def show_demand_page(sheet_id, info):
                 if d_ex:
                     dias_r = (d_ex - hoje).days
                     if dias_r < 0:
-                        urg_lbl = f"VENCIDA ({abs(dias_r)} dia(s) atrás)"
+                        urg_lbl = f"EXPIRADA ({abs(dias_r)} dia(s) atrás)"
                     elif dias_r <= 7:
                         urg_lbl = f"URGENTE ({dias_r} dia(s) restantes)"
                     elif dias_r <= 30:
