@@ -125,11 +125,6 @@ def parse_pdf_data(pdf_path):
     except Exception as e:
         print(f"Erro ao ler PDF: {e}")
     finally:
-        try:
-            if pdf_path and os.path.exists(pdf_path):
-                os.remove(pdf_path)
-        except Exception:
-            pass
         gc.collect()
         
     return info
@@ -409,7 +404,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                     f_pdf.write(req_res.body())
                     
                 parsed = parse_pdf_data(pdf_historico_path)
-                if parsed.get("cpf") or parsed.get("rg"):
+                if parsed:
                     for k, v in parsed.items():
                         if v: aluno_info[k] = v
                     break
@@ -443,7 +438,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                         dl.save_as(pdf_historico_path)
                         if os.path.exists(pdf_historico_path):
                             parsed = parse_pdf_data(pdf_historico_path)
-                            if parsed.get("cpf") or parsed.get("rg"):
+                            if parsed:
                                 for k, v in parsed.items():
                                     if v: aluno_info[k] = v
                                 break
