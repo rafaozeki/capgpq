@@ -64,21 +64,46 @@ def parse_pdf_data(pdf_path):
             
         nasc_match = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if nasc_match: info['nascimento'] = nasc_match.group(1).strip()
+
+        sexo_match = re.search(r"Sexo:\s*([^\s\n\t]+)", texto, re.I)
+        if sexo_match: info['sexo'] = sexo_match.group(1).strip()
+        
+        nat_match = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°])", texto, re.I)
+        if nat_match: info['naturalidade'] = nat_match.group(1).strip()
             
         ing_match = re.search(r"(?:Ingresso|Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if ing_match: info['ingresso'] = ing_match.group(1).strip()
+        
+        forma_match = re.search(r"Forma\s*de\s*Ingresso:\s*(.*?)(?=\s{2,}|\n|Homologação|Homologacao)", texto, re.I)
+        if forma_match: info['forma_ingresso'] = forma_match.group(1).strip()
             
         term_match = re.search(r"Término\s*(?:Previsto)?:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if term_match: info['termino_previsto'] = term_match.group(1).strip()
+        
+        sit_match = re.search(r"Situação:\s*(.*?)(?=\s{2,}|\n|Término|Termino)", texto, re.I)
+        if sit_match:
+            v_sit = sit_match.group(1).strip()
+            info['situacao'] = v_sit
+            info['situacao_siiu'] = v_sit
+            
+        prog_match = re.search(r"Programa:\s*(.*?)(?=\s{2,}|\n|Nível|Nivel)", texto, re.I)
+        if prog_match:
+            v_prog = prog_match.group(1).strip()
+            info['programa'] = v_prog
+            info['curso'] = v_prog
+            
+        niv_match = re.search(r"Nível:\s*([^\n]+)", texto, re.I)
+        if niv_match: info['nivel'] = niv_match.group(1).strip()
             
         homol_match = re.search(r"Homologação\s*do\s*Título:\s*.*?([\d]{2}/[\d]{2}/[\d]{4})", texto, re.I)
         if homol_match: info['homologacao'] = homol_match.group(1).strip()
             
         tese_match = re.search(r"Título\s*da\s*Tese:\s*(.*?)(?=\nOrientador|Orientador)", texto, re.I | re.DOTALL)
         if tese_match: 
-            info['titulo_tese'] = tese_match.group(1).replace("\n", " ").strip()
+            t_val = tese_match.group(1).replace("\n", " ").strip()
+            info['titulo_tese'] = t_val if t_val else "Não informado / Em andamento"
             
-        orient_match = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\nDefesa|Defesa)", texto, re.I | re.DOTALL)
+        orient_match = re.search(r"Orientador[\(a\)]*:\s*(.*?)(?=\s{2,}|\n|Defesa)", texto, re.I)
         if orient_match: 
             info['orientador'] = orient_match.group(1).replace("\n", " ").strip()
             
@@ -86,12 +111,12 @@ def parse_pdf_data(pdf_path):
         if defesa_match: 
             info['defesa'] = defesa_match.group(1).strip()
         else:
-            info['defesa'] = "Pendente"
+            info['defesa'] = "Pendente / Em andamento"
             
-        l1_match = re.search(r"1[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
+        l1_match = re.search(r"1[ºo°]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
         if l1_match: info['lingua_1'] = l1_match.group(1).strip()
             
-        l2_match = re.search(r"2[ºo]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
+        l2_match = re.search(r"2[ºo°]\s*Língua\s*Estrangeira:\s*([A-Za-zÀ-ÿ]+)", texto, re.I)
         if l2_match: info['lingua_2'] = l2_match.group(1).strip()
             
         uc_match = re.search(r"Unidade\s*Curricular.*?\n(.*?)(?=\nTotal|\nCréditos|\nResumo|\nMédia)", texto, re.I | re.DOTALL)
