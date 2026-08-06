@@ -671,17 +671,17 @@ def show_control_panel(config):
     elif filtro_selecao == "Escolher Período Customizado":
         cf_c1, cf_c2 = st.columns(2)
         with cf_c1:
-            data_inicio_solic = st.date_input("Início da Solicitação (Filtro Global):", value=hoje - timedelta(days=30))
+            data_inicio_solic = st.date_input("Início da Solicitação (Filtro Global):", value=hoje - timedelta(days=30), format="DD/MM/YYYY")
         with cf_c2:
-            data_fim_solic = st.date_input("Fim da Solicitação (Filtro Global):", value=hoje)
+            data_fim_solic = st.date_input("Fim da Solicitação (Filtro Global):", value=hoje, format="DD/MM/YYYY")
 
     data_inicio_exec, data_fim_exec = None, None
     if filtro_execucao == "Escolher Período de Execução":
         fe_c1, fe_c2 = st.columns(2)
         with fe_c1:
-            data_inicio_exec = st.date_input("Início da Execução (Filtro Global):", value=hoje)
+            data_inicio_exec = st.date_input("Início da Execução (Filtro Global):", value=hoje, format="DD/MM/YYYY")
         with fe_c2:
-            data_fim_exec = st.date_input("Fim da Execução (Filtro Global):", value=hoje + timedelta(days=30))
+            data_fim_exec = st.date_input("Fim da Execução (Filtro Global):", value=hoje + timedelta(days=30), format="DD/MM/YYYY")
 
     # Aplicação dos Filtros Combinados Simultâneos
     filtered_activities = []
@@ -1997,17 +1997,17 @@ def show_demand_page(sheet_id, info):
     elif filtro_selecao == "Escolher Período Customizado":
         cf_c1, cf_c2 = st.columns(2)
         with cf_c1:
-            data_inicio_solic = st.date_input("Início da Solicitação:", value=hoje - timedelta(days=30))
+            data_inicio_solic = st.date_input("Início da Solicitação:", value=hoje - timedelta(days=30), format="DD/MM/YYYY")
         with cf_c2:
-            data_fim_solic = st.date_input("Fim da Solicitação:", value=hoje)
+            data_fim_solic = st.date_input("Fim da Solicitação:", value=hoje, format="DD/MM/YYYY")
 
     data_inicio_exec, data_fim_exec = None, None
     if filtro_execucao == "Escolher Período de Execução":
         fe_c1, fe_c2 = st.columns(2)
         with fe_c1:
-            data_inicio_exec = st.date_input("Início da Execução:", value=hoje)
+            data_inicio_exec = st.date_input("Início da Execução:", value=hoje, format="DD/MM/YYYY")
         with fe_c2:
-            data_fim_exec = st.date_input("Fim da Execução:", value=hoje + timedelta(days=30))
+            data_fim_exec = st.date_input("Fim da Execução:", value=hoje + timedelta(days=30), format="DD/MM/YYYY")
 
     # Filtragem Simultânea das Demandas
     filtered_items = []

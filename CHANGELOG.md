@@ -2,6 +2,15 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.8.2] — 06/08/2026 (Horário: 19:26)
+
+### 📅 Formatação de Data em Padrão Brasileiro (DD/MM/YYYY)
+- **Formatação de Seleção de Período Customizado**:
+  - Definição do parâmetro `format="DD/MM/YYYY"` em todos os seletores de data (`st.date_input`) do sistema.
+  - Exibição estrita no padrão brasileiro **dia/mês/ano** (ex: `28/07/2026`).
+
+---
+
 ## [v0.8.1] — 06/08/2026 (Horário: 19:20)
 
 ### 🎨 Organização Visual por Tópicos de Atividades
