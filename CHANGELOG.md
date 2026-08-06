@@ -2,6 +2,16 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.8.1] — 06/08/2026 (Horário: 19:20)
+
+### 🎨 Organização Visual por Tópicos de Atividades
+- **Agrupamento por Tópicos**:
+  - Reorganização da lista de atividades do *Painel de Controle* em tópicos separados por nome de atividade/módulo (`📂 Tópico: Nome da Atividade`).
+- **Acesso Direto à Planilha por Tópico**:
+  - Inclusão do botão **`🌐 Acessar Planilha ([Atividade])`** diretamente abaixo do cabeçalho de cada tópico de atividade para acesso direto ao Google Sheets em 1 clique.
+
+---
+
 ## [v0.8.0] — 06/08/2026 (Horário: 19:15)
 
 ### 🚀 Novas Funcionalidades e Reorganização do Menu

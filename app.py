@@ -812,70 +812,91 @@ def show_control_panel(config):
             st.info("Nenhuma atividade encontrada com os filtros selecionados.")
 
     st.divider()
-    st.write(f"### 📋 Lista de Atividades Disponíveis para Execução ({len(filtered_activities)})")
+
+    # Agrupamento das Atividades por Tópico (Nome da Atividade / Módulo)
+    grouped_activities = {}
+    for item in filtered_activities:
+        mod = item["modulo_nome"]
+        if mod not in grouped_activities:
+            grouped_activities[mod] = []
+        grouped_activities[mod].append(item)
+
+    st.write(f"### 📋 Atividades Disponíveis para Execução ({len(filtered_activities)} registro(s) em {len(grouped_activities)} tópico(s))")
 
     if not filtered_activities:
         st.info("Nenhuma atividade disponível para execução no momento com os filtros aplicados.")
         return
 
-    for item in filtered_activities:
-        sheet_id = item["sheet_id"]
-        mod_nome = item["modulo_nome"]
-        idx_real = item["idx_real"]
-        nome_val = item["nome_val"]
-        val_data_comp = item["val_data_comp"]
-        card_items = item["card_items"]
-        header = item["header"]
-        d_ex = item["data_exec_parsed"]
+    for mod_nome, items_group in grouped_activities.items():
+        first_item = items_group[0]
+        sheet_id = first_item["sheet_id"]
+        sheet_name = first_item["sheet_name"]
 
-        # Tag de Urgência
-        if d_ex:
-            dias_r = (d_ex - hoje).days
-            if dias_r < 0:
-                badge_urg = f"🔴 EXPIRADA ({abs(dias_r)}d atrás)"
-            elif dias_r <= 7:
-                badge_urg = f"🚨 URGENTE ({dias_r}d restantes)"
-            elif dias_r <= 30:
-                badge_urg = f"⚠️ MÉDIO PRAZO ({dias_r}d)"
+        st.write("---")
+        st.markdown(f"### 📂 Tópico: {mod_nome}")
+        
+        t_col1, t_col2 = st.columns([7, 3])
+        with t_col1:
+            st.caption(f"Planilha referente: **{sheet_name}** | **{len(items_group)} atividade(s) neste tópico**")
+        with t_col2:
+            st.link_button(f"🌐 Acessar Planilha ({mod_nome})", f"https://docs.google.com/spreadsheets/d/{sheet_id}", use_container_width=True)
+
+        for item in items_group:
+            idx_real = item["idx_real"]
+            nome_val = item["nome_val"]
+            val_data_comp = item["val_data_comp"]
+            card_items = item["card_items"]
+            header = item["header"]
+            d_ex = item["data_exec_parsed"]
+
+            # Tag de Urgência
+            if d_ex:
+                dias_r = (d_ex - hoje).days
+                if dias_r < 0:
+                    badge_urg = f"🔴 EXPIRADA ({abs(dias_r)}d atrás)"
+                elif dias_r <= 7:
+                    badge_urg = f"🚨 URGENTE ({dias_r}d restantes)"
+                elif dias_r <= 30:
+                    badge_urg = f"⚠️ MÉDIO PRAZO ({dias_r}d)"
+                else:
+                    badge_urg = f"🟢 REGULAR ({dias_r}d)"
             else:
-                badge_urg = f"🟢 REGULAR ({dias_r}d)"
-        else:
-            badge_urg = "⚪ Sem prazo definido"
+                badge_urg = "⚪ Sem prazo definido"
 
-        title_card = f"📌 **[{mod_nome}]** 👤 **{nome_val}** — {badge_urg} (Solicitado em: {val_data_comp})"
+            title_card = f"👤 **{nome_val}** — {badge_urg} (Solicitado em: {val_data_comp})"
 
-        with st.expander(title_card):
-            if not card_items:
-                st.warning("Campos padrão não identificados.")
-            else:
-                num_colunas = 3
-                for i in range(0, len(card_items), num_colunas):
-                    cols = st.columns(num_colunas)
-                    for j in range(num_colunas):
-                        if i + j < len(card_items):
-                            c_item = card_items[i+j]
-                            disp_label = c_item["display_label"]
-                            orig_key = c_item["original_key"]
-                            val = c_item["val"]
+            with st.expander(title_card):
+                if not card_items:
+                    st.warning("Campos padrão não identificados.")
+                else:
+                    num_colunas = 3
+                    for i in range(0, len(card_items), num_colunas):
+                        cols = st.columns(num_colunas)
+                        for j in range(num_colunas):
+                            if i + j < len(card_items):
+                                c_item = card_items[i+j]
+                                disp_label = c_item["display_label"]
+                                orig_key = c_item["original_key"]
+                                val = c_item["val"]
 
-                            if val and str(val).strip():
-                                with cols[j]:
-                                    st.markdown(f'<div class="info-title">{disp_label}</div>', unsafe_allow_html=True)
-                                    inner_c1, inner_c2 = st.columns([4, 1])
-                                    with inner_c1:
-                                        st.code(val, language="text")
-                                    with inner_c2:
-                                        with st.popover("✏️"):
-                                            st.write(f"Editar **{disp_label}**")
-                                            novo_valor = st.text_input("Novo valor:", value=str(val), key=f"inp_g_{sheet_id}_{idx_real}_{orig_key}")
-                                            if st.button("Salvar na Planilha", key=f"btn_g_{sheet_id}_{idx_real}_{orig_key}"):
-                                                try:
-                                                    coluna_index = header.index(orig_key)
-                                                    update_sheet_cell(sheet_id, item["aba_nome"], idx_real, coluna_index, novo_valor)
-                                                    st.success("Salvo com sucesso! A página irá recarregar.")
-                                                    st.rerun()
-                                                except Exception as err:
-                                                    st.error(f"Erro ao salvar: {err}")
+                                if val and str(val).strip():
+                                    with cols[j]:
+                                        st.markdown(f'<div class="info-title">{disp_label}</div>', unsafe_allow_html=True)
+                                        inner_c1, inner_c2 = st.columns([4, 1])
+                                        with inner_c1:
+                                            st.code(val, language="text")
+                                        with inner_c2:
+                                            with st.popover("✏️"):
+                                                st.write(f"Editar **{disp_label}**")
+                                                novo_valor = st.text_input("Novo valor:", value=str(val), key=f"inp_g_{sheet_id}_{idx_real}_{orig_key}")
+                                                if st.button("Salvar na Planilha", key=f"btn_g_{sheet_id}_{idx_real}_{orig_key}"):
+                                                    try:
+                                                        coluna_index = header.index(orig_key)
+                                                        update_sheet_cell(sheet_id, item["aba_nome"], idx_real, coluna_index, novo_valor)
+                                                        st.success("Salvo com sucesso! A página irá recarregar.")
+                                                        st.rerun()
+                                                    except Exception as err:
+                                                        st.error(f"Erro ao salvar: {err}")
 
 def show_polare_page():
     st.title("📝 Polare - Lançamento de Atividades")
