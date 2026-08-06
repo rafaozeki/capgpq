@@ -2,6 +2,20 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.9.0] — 06/08/2026 (Horário: 19:28)
+
+### ⚡ Painel de Controle Sintético e Central de Acesso Rápido
+- **Remoção de Listas Longas de Alunos**:
+  - Eliminação da lista extensa de solicitações individuais no *Painel de Controle*, mantendo a página ultra leve, limpa e focada em visão situacional.
+- **Tabela Resumo Comparativa das Demandas**:
+  - Exibição de tabela sintética comparando todos os módulos e seus totais de pendências (*Expiradas*, *Urgentes*, *Médio Prazo*, *Regular*).
+- **Grid de Lançamento de Módulos (2 Colunas)**:
+  - Criação de cartões sintéticos enxutos por atividade com indicadores numéricos de status.
+  - Botão **`🌐 Planilha no Google`** (Link direto externo para o Google Sheets em 1 clique).
+  - Botão **`🚀 Ir para [Módulo]`** (Navegação direta em 1 clique para a página detalhada do módulo).
+
+---
+
 ## [v0.8.2] — 06/08/2026 (Horário: 19:26)
 
 ### 📅 Formatação de Data em Padrão Brasileiro (DD/MM/YYYY)
