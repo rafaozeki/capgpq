@@ -460,20 +460,25 @@ def main():
     config = load_json(CONFIG_FILE)
     
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = "Estatísticas"
+        st.session_state.current_page = "Painel de Controle"
     
     st.sidebar.markdown(
         """
         <div style="text-align: center; margin-bottom: 20px;">
             <h1 style="color: #174C33; font-family: 'Merriweather', serif; font-weight: 800; font-size: 2.2rem; margin-bottom: 0px;">UNIFESP</h1>
-            <p style="color: #615c5c; font-size: 0.95rem; margin-top: -10px;">Painel de Controle - CaPGPq-EFLCH</p>
+            <p style="color: #615c5c; font-size: 0.95rem; margin-top: -10px;">CaPGPq-EFLCH</p>
         </div>
         """,
         unsafe_allow_html=True
     )
     
-    # 1. Painel de Controle
-    st.sidebar.markdown("**Painel de Controle:**")
+    # 1. Menu
+    st.sidebar.markdown("**Menu:**")
+    
+    ctrl_btn_type = "primary" if st.session_state.current_page == "Painel de Controle" else "secondary"
+    if st.sidebar.button("📋 Painel de Controle", type=ctrl_btn_type, use_container_width=True):
+        st.session_state.current_page = "Painel de Controle"
+
     panel_btn_type = "primary" if st.session_state.current_page == "Estatísticas" else "secondary"
     if st.sidebar.button("📊 Estatísticas", type=panel_btn_type, use_container_width=True):
         st.session_state.current_page = "Estatísticas"
@@ -516,6 +521,8 @@ def main():
     
     if page == "⚙️ Configurações":
         show_config_page(config)
+    elif page == "Painel de Controle":
+        show_control_panel(config)
     elif page == "Estatísticas":
         show_dashboard(config)
     elif page == "🔗 Links Úteis":
@@ -542,6 +549,333 @@ def main():
     )
     # Espaço extra para não sobrepor o footer
     st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+def show_control_panel(config):
+    st.title("📋 Painel de Controle — Central de Atividades & Demandas")
+    st.write("Visualização unificada de todas as atividades disponíveis para execução nas planilhas monitoradas do sistema.")
+    st.divider()
+
+    hoje = datetime.now().date()
+
+    if not config:
+        st.warning("Nenhuma planilha monitorada configurada. Acesse '⚙️ Configurações' no menu lateral para adicionar planilhas.")
+        return
+
+    # Extração global de dados de todas as planilhas monitoradas
+    all_activities = []
+    all_modulos = set()
+    all_tipos_solic = set()
+
+    with st.spinner("Carregando e consolidando atividades de todas as planilhas monitoradas..."):
+        for sheet_id, info in config.items():
+            modulo_nome = info.get('tipo', 'Demanda')
+            sheet_name = info.get('name', 'Planilha')
+            aba_nome = info.get('aba', 'Respostas ao formulário 1')
+            all_modulos.add(modulo_nome)
+
+            try:
+                data = get_sheet_data(sheet_id, aba_nome)
+                if not data or len(data) < 2:
+                    continue
+                header = data[0]
+                rows = data[1:]
+
+                for reversed_idx, row in enumerate(reversed(rows)):
+                    idx_real = len(rows) - reversed_idx + 1
+                    row_padded = row + [''] * (len(header) - len(row))
+                    data_linha, val_data_comp = get_row_date(row_padded, header)
+                    rel_data = extract_relevant_data(row_padded, header)
+                    card_items = sort_and_format_card_data(rel_data)
+
+                    # Identificar Solicitante
+                    nome_col = next((c for c in header if "nome" in str(c).lower() and "programa" not in str(c).lower()), None)
+                    nome_val = row_padded[header.index(nome_col)] if nome_col else f"Solicitante (Linha {idx_real})"
+                    if not str(nome_val).strip():
+                        nome_val = f"Solicitante da Linha {idx_real}"
+
+                    # Extrair Tipo de Solicitação
+                    tipo_solic_val = ""
+                    for k, v in rel_data.items():
+                        if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
+                            tipo_solic_val = str(v).strip()
+                            if tipo_solic_val:
+                                all_tipos_solic.add(tipo_solic_val)
+
+                    # Extrair Data para Execução
+                    data_exec_val = ""
+                    data_exec_parsed = None
+                    for k, v in rel_data.items():
+                        if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
+                            data_exec_val = str(v).strip()
+                            data_exec_parsed = parse_date_br(data_exec_val)
+
+                    all_activities.append({
+                        "sheet_id": sheet_id,
+                        "modulo_nome": modulo_nome,
+                        "sheet_name": sheet_name,
+                        "aba_nome": aba_nome,
+                        "idx_real": idx_real,
+                        "nome_val": nome_val,
+                        "header": header,
+                        "row_padded": row_padded,
+                        "data_linha": data_linha,
+                        "val_data_comp": val_data_comp,
+                        "rel_data": rel_data,
+                        "card_items": card_items,
+                        "tipo_solic": tipo_solic_val,
+                        "data_exec_val": data_exec_val,
+                        "data_exec_parsed": data_exec_parsed
+                    })
+            except Exception as e_load:
+                st.warning(f"Não foi possível carregar os dados do módulo '{modulo_nome}': {e_load}")
+
+    st.write("🔍 **Filtros Globais de Busca e Execução**")
+
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+
+    with f_col1:
+        filtro_modulo = st.selectbox(
+            "1. Módulo / Demanda:",
+            ["Todos os Módulos"] + sorted(list(all_modulos))
+        )
+
+    with f_col2:
+        filtro_selecao = st.selectbox(
+            "2. Período de Solicitação:",
+            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
+        )
+
+    tipos_opcoes = ["Todos os Tipos de Solicitação"] + sorted(list(all_tipos_solic))
+    with f_col3:
+        filtro_tipo_solic = st.selectbox(
+            "3. Tipo de Solicitação:",
+            tipos_opcoes
+        )
+
+    with f_col4:
+        filtro_execucao = st.selectbox(
+            "4. Data para Execução / Urgência:",
+            ["Todas as Datas de Execução", "🚨 Urgentes (Próximas / Expiradas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"]
+        )
+
+    # Sub-filtros de data customizada se selecionados
+    data_inicio_solic, data_fim_solic = None, None
+    if filtro_selecao == "Apenas Hoje":
+        data_inicio_solic, data_fim_solic = hoje, hoje
+    elif filtro_selecao == "Últimos 7 dias":
+        data_inicio_solic, data_fim_solic = hoje - timedelta(days=7), hoje
+    elif filtro_selecao == "Mês Atual":
+        data_inicio_solic, data_fim_solic = hoje.replace(day=1), hoje
+    elif filtro_selecao == "Últimos 6 meses":
+        data_inicio_solic, data_fim_solic = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1), hoje
+    elif filtro_selecao == "Escolher Período Customizado":
+        cf_c1, cf_c2 = st.columns(2)
+        with cf_c1:
+            data_inicio_solic = st.date_input("Início da Solicitação (Filtro Global):", value=hoje - timedelta(days=30))
+        with cf_c2:
+            data_fim_solic = st.date_input("Fim da Solicitação (Filtro Global):", value=hoje)
+
+    data_inicio_exec, data_fim_exec = None, None
+    if filtro_execucao == "Escolher Período de Execução":
+        fe_c1, fe_c2 = st.columns(2)
+        with fe_c1:
+            data_inicio_exec = st.date_input("Início da Execução (Filtro Global):", value=hoje)
+        with fe_c2:
+            data_fim_exec = st.date_input("Fim da Execução (Filtro Global):", value=hoje + timedelta(days=30))
+
+    # Aplicação dos Filtros Combinados Simultâneos
+    filtered_activities = []
+    for item in all_activities:
+        # A. Filtro por Módulo
+        if filtro_modulo != "Todos os Módulos":
+            if item["modulo_nome"] != filtro_modulo:
+                continue
+
+        # B. Filtro por Período de Solicitação
+        if filtro_selecao != "Todas as Atividades":
+            d_l = item["data_linha"]
+            if d_l and data_inicio_solic and data_fim_solic:
+                d_cmp = d_l.date() if isinstance(d_l, datetime) else d_l
+                if not (data_inicio_solic <= d_cmp <= data_fim_solic):
+                    continue
+            elif not d_l:
+                continue
+
+        # C. Filtro por Tipo de Solicitação
+        if filtro_tipo_solic != "Todos os Tipos de Solicitação":
+            if item["tipo_solic"].strip().lower() != filtro_tipo_solic.strip().lower():
+                continue
+
+        # D. Filtro por Data para Execução / Urgência
+        d_ex = item["data_exec_parsed"]
+        if filtro_execucao == "🚨 Urgentes (Próximas / Expiradas <= 7 dias)":
+            if not d_ex:
+                continue
+            dias_r = (d_ex - hoje).days
+            if dias_r > 7:
+                continue
+        elif filtro_execucao == "⚠️ Médio Prazo (8 a 30 dias)":
+            if not d_ex:
+                continue
+            dias_r = (d_ex - hoje).days
+            if not (8 <= dias_r <= 30):
+                continue
+        elif filtro_execucao == "Escolher Período de Execução":
+            if d_ex and data_inicio_exec and data_fim_exec:
+                if not (data_inicio_exec <= d_ex <= data_fim_exec):
+                    continue
+            elif not d_ex:
+                continue
+
+        filtered_activities.append(item)
+
+    st.divider()
+
+    # Painel Executivo Consolidado
+    st.write("### 📈 Métricas de Execução do Painel de Controle")
+    col_rep1, col_rep2, col_rep3, col_rep4 = st.columns(4)
+    with col_rep1:
+        st.metric("Total de Atividades", f"{len(filtered_activities)} registro(s)")
+
+    vencidas_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
+    with col_rep2:
+        st.metric("Expiradas", f"{vencidas_count} atividade(s)")
+
+    urgentes_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and 0 <= (it["data_exec_parsed"] - hoje).days <= 7)
+    with col_rep3:
+        st.metric("A Vencer (0 a 7 dias)", f"{urgentes_count} atividade(s)")
+
+    medio_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and 8 <= (it["data_exec_parsed"] - hoje).days <= 30)
+    with col_rep4:
+        st.metric("Médio Prazo (8 a 30 dias)", f"{medio_count} atividade(s)")
+
+    st.divider()
+
+    # Opções de Relatório Unificado (CSV + Imprimir HTML)
+    with st.expander("📊 Relatório Completo Unificado (Todas as Planilhas) — Clique para expandir", expanded=False):
+        if filtered_activities:
+            report_data = []
+            for it in filtered_activities:
+                r_dict = {"[Módulo] Demanda": it["modulo_nome"], "Solicitante": it["nome_val"]}
+                row_p = it["row_padded"]
+                for idx_c, col_name in enumerate(it["header"]):
+                    r_dict[str(col_name).strip()] = row_p[idx_c] if idx_c < len(row_p) else ""
+
+                d_ex = it["data_exec_parsed"]
+                if d_ex:
+                    dias_r = (d_ex - hoje).days
+                    if dias_r < 0:
+                        urg_lbl = f"EXPIRADA ({abs(dias_r)} dia(s) atrás)"
+                    elif dias_r <= 7:
+                        urg_lbl = f"URGENTE ({dias_r} dia(s) restantes)"
+                    elif dias_r <= 30:
+                        urg_lbl = f"MÉDIO PRAZO ({dias_r} dia(s))"
+                    else:
+                        urg_lbl = f"REGULAR ({dias_r} dia(s))"
+                    r_dict["[Previsão] Dias para Execução"] = dias_r
+                    r_dict["[Previsão] Nível de Urgência"] = urg_lbl
+                else:
+                    r_dict["[Previsão] Dias para Execução"] = "N/A"
+                    r_dict["[Previsão] Nível de Urgência"] = "Não informada"
+
+                report_data.append(r_dict)
+
+            df_report = pd.DataFrame(report_data)
+            csv_bytes = df_report.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+            st.dataframe(df_report, use_container_width=True, height=250)
+
+            b_col1, b_col2 = st.columns(2)
+            with b_col1:
+                st.download_button(
+                    label="📥 Baixar Relatório Unificado (CSV / Excel)",
+                    data=csv_bytes,
+                    file_name=f"Relatorio_Unificado_Painel_Controle_{hoje.strftime('%d_%m_%Y')}.csv",
+                    mime="text/csv",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_dl_report_global"
+                )
+
+            with b_col2:
+                html_print = generate_printable_report_html(df_report, "Painel de Controle Consolidado")
+                st.download_button(
+                    label="🖨️ Imprimir / Baixar Relatório Unificado (HTML)",
+                    data=html_print,
+                    file_name=f"Imprimir_Relatorio_Painel_Controle_{hoje.strftime('%d_%m_%Y')}.html",
+                    mime="text/html",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_print_report_global"
+                )
+        else:
+            st.info("Nenhuma atividade encontrada com os filtros selecionados.")
+
+    st.divider()
+    st.write(f"### 📋 Lista de Atividades Disponíveis para Execução ({len(filtered_activities)})")
+
+    if not filtered_activities:
+        st.info("Nenhuma atividade disponível para execução no momento com os filtros aplicados.")
+        return
+
+    for item in filtered_activities:
+        sheet_id = item["sheet_id"]
+        mod_nome = item["modulo_nome"]
+        idx_real = item["idx_real"]
+        nome_val = item["nome_val"]
+        val_data_comp = item["val_data_comp"]
+        card_items = item["card_items"]
+        header = item["header"]
+        d_ex = item["data_exec_parsed"]
+
+        # Tag de Urgência
+        if d_ex:
+            dias_r = (d_ex - hoje).days
+            if dias_r < 0:
+                badge_urg = f"🔴 EXPIRADA ({abs(dias_r)}d atrás)"
+            elif dias_r <= 7:
+                badge_urg = f"🚨 URGENTE ({dias_r}d restantes)"
+            elif dias_r <= 30:
+                badge_urg = f"⚠️ MÉDIO PRAZO ({dias_r}d)"
+            else:
+                badge_urg = f"🟢 REGULAR ({dias_r}d)"
+        else:
+            badge_urg = "⚪ Sem prazo definido"
+
+        title_card = f"📌 **[{mod_nome}]** 👤 **{nome_val}** — {badge_urg} (Solicitado em: {val_data_comp})"
+
+        with st.expander(title_card):
+            if not card_items:
+                st.warning("Campos padrão não identificados.")
+            else:
+                num_colunas = 3
+                for i in range(0, len(card_items), num_colunas):
+                    cols = st.columns(num_colunas)
+                    for j in range(num_colunas):
+                        if i + j < len(card_items):
+                            c_item = card_items[i+j]
+                            disp_label = c_item["display_label"]
+                            orig_key = c_item["original_key"]
+                            val = c_item["val"]
+
+                            if val and str(val).strip():
+                                with cols[j]:
+                                    st.markdown(f'<div class="info-title">{disp_label}</div>', unsafe_allow_html=True)
+                                    inner_c1, inner_c2 = st.columns([4, 1])
+                                    with inner_c1:
+                                        st.code(val, language="text")
+                                    with inner_c2:
+                                        with st.popover("✏️"):
+                                            st.write(f"Editar **{disp_label}**")
+                                            novo_valor = st.text_input("Novo valor:", value=str(val), key=f"inp_g_{sheet_id}_{idx_real}_{orig_key}")
+                                            if st.button("Salvar na Planilha", key=f"btn_g_{sheet_id}_{idx_real}_{orig_key}"):
+                                                try:
+                                                    coluna_index = header.index(orig_key)
+                                                    update_sheet_cell(sheet_id, item["aba_nome"], idx_real, coluna_index, novo_valor)
+                                                    st.success("Salvo com sucesso! A página irá recarregar.")
+                                                    st.rerun()
+                                                except Exception as err:
+                                                    st.error(f"Erro ao salvar: {err}")
 
 def show_polare_page():
     st.title("📝 Polare - Lançamento de Atividades")

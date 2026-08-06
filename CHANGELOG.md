@@ -2,6 +2,19 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.8.0] — 06/08/2026 (Horário: 19:15)
+
+### 🚀 Novas Funcionalidades e Reorganização do Menu
+- **Reorganização do Menu Lateral**:
+  - Alteração da seção do menu lateral de *"Painel de Controle"* para **"Menu"**.
+  - Criação do novo botão de acesso rápido **`📋 Painel de Controle`** no topo da barra lateral.
+- **Central Unificada do Painel de Controle (`show_control_panel`)**:
+  - Consolidação global de todas as atividades disponíveis para execução em todas as planilhas monitoradas do sistema.
+  - Filtros simultâneos globais por *Módulo/Demanda*, *Período de Solicitação*, *Tipo de Solicitação* e *Data para Execução / Urgência*.
+  - Indicadores numéricos globais de atividades *Expiradas*, *A Vencer (0 a 7 dias)* e *Médio Prazo (8 a 30 dias)*.
+  - Exportação de relatório unificado em CSV/Excel e impressão direta em layout A4 HTML.
+  - Exibição de cartões expansíveis unificados com tags visuais de urgência (`🔴 EXPIRADA`, `🚨 URGENTE`, `⚠️ MÉDIO PRAZO`, `🟢 REGULAR`) e edição direta em 1 clique.
+
 ---
 
 ## [v0.7.0] — 28/07/2026 (Horário: 19:25)
