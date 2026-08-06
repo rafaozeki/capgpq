@@ -2,6 +2,19 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.9.5] — 06/08/2026 (Horário: 19:35)
+
+### 🚀 Otimização de Performance e Carregamento Sob Demanda
+- **Eliminação do Carregamento Automático Lento**:
+  - As páginas do *Painel de Controle* e de *Módulos de Demandas* não realizam mais chamadas HTTP automáticas ao Google Sheets ao serem abertas, reduzindo o tempo de carregamento inicial para **0 segundos (carregamento instantâneo)**.
+- **Fluxo de Filtro Primeiro + Consulta Sob Demanda**:
+  - Exibição inicial dos seletores de filtro. O carregamento de dados é disparado exclusivamente ao clicar no botão **`🔍 Consultar & Filtrar Planilhas`**.
+- **Cache de Sessão Inteligente (`st.session_state`)**:
+  - Armazenamento em memória dos dados baixados para navegação ultrarrápida entre filtros.
+  - Inclusão do botão **`🔄 Atualizar Dados`** para forçar a busca de novos registros no Google Drive quando desejado.
+
+---
+
 ## [v0.9.0] — 06/08/2026 (Horário: 19:28)
 
 ### ⚡ Painel de Controle Sintético e Central de Acesso Rápido

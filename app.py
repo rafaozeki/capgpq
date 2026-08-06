@@ -551,8 +551,8 @@ def main():
     st.markdown("<br><br><br>", unsafe_allow_html=True)
 
 def show_control_panel(config):
-    st.title("📋 Painel de Controle — Central de Atividades & Demandas")
-    st.write("Visualização unificada de todas as atividades disponíveis para execução nas planilhas monitoradas do sistema.")
+    st.title("📋 Painel de Controle — Resumo Executivo & Central de Atividades")
+    st.caption("Selecione os filtros desejados e clique no botão para consultar as planilhas no Google Drive.")
     st.divider()
 
     hoje = datetime.now().date()
@@ -561,73 +561,7 @@ def show_control_panel(config):
         st.warning("Nenhuma planilha monitorada configurada. Acesse '⚙️ Configurações' no menu lateral para adicionar planilhas.")
         return
 
-    # Extração global de dados de todas as planilhas monitoradas
-    all_activities = []
-    all_modulos = set()
-    all_tipos_solic = set()
-
-    with st.spinner("Carregando e consolidando atividades de todas as planilhas monitoradas..."):
-        for sheet_id, info in config.items():
-            modulo_nome = info.get('tipo', 'Demanda')
-            sheet_name = info.get('name', 'Planilha')
-            aba_nome = info.get('aba', 'Respostas ao formulário 1')
-            all_modulos.add(modulo_nome)
-
-            try:
-                data = get_sheet_data(sheet_id, aba_nome)
-                if not data or len(data) < 2:
-                    continue
-                header = data[0]
-                rows = data[1:]
-
-                for reversed_idx, row in enumerate(reversed(rows)):
-                    idx_real = len(rows) - reversed_idx + 1
-                    row_padded = row + [''] * (len(header) - len(row))
-                    data_linha, val_data_comp = get_row_date(row_padded, header)
-                    rel_data = extract_relevant_data(row_padded, header)
-                    card_items = sort_and_format_card_data(rel_data)
-
-                    # Identificar Solicitante
-                    nome_col = next((c for c in header if "nome" in str(c).lower() and "programa" not in str(c).lower()), None)
-                    nome_val = row_padded[header.index(nome_col)] if nome_col else f"Solicitante (Linha {idx_real})"
-                    if not str(nome_val).strip():
-                        nome_val = f"Solicitante da Linha {idx_real}"
-
-                    # Extrair Tipo de Solicitação
-                    tipo_solic_val = ""
-                    for k, v in rel_data.items():
-                        if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
-                            tipo_solic_val = str(v).strip()
-                            if tipo_solic_val:
-                                all_tipos_solic.add(tipo_solic_val)
-
-                    # Extrair Data para Execução
-                    data_exec_val = ""
-                    data_exec_parsed = None
-                    for k, v in rel_data.items():
-                        if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
-                            data_exec_val = str(v).strip()
-                            data_exec_parsed = parse_date_br(data_exec_val)
-
-                    all_activities.append({
-                        "sheet_id": sheet_id,
-                        "modulo_nome": modulo_nome,
-                        "sheet_name": sheet_name,
-                        "aba_nome": aba_nome,
-                        "idx_real": idx_real,
-                        "nome_val": nome_val,
-                        "header": header,
-                        "row_padded": row_padded,
-                        "data_linha": data_linha,
-                        "val_data_comp": val_data_comp,
-                        "rel_data": rel_data,
-                        "card_items": card_items,
-                        "tipo_solic": tipo_solic_val,
-                        "data_exec_val": data_exec_val,
-                        "data_exec_parsed": data_exec_parsed
-                    })
-            except Exception as e_load:
-                st.warning(f"Não foi possível carregar os dados do módulo '{modulo_nome}': {e_load}")
+    all_modulos = sorted(list(set(info.get('tipo', 'Demanda') for info in config.values())))
 
     st.write("🔍 **Filtros Globais de Busca e Execução**")
 
@@ -636,7 +570,7 @@ def show_control_panel(config):
     with f_col1:
         filtro_modulo = st.selectbox(
             "1. Módulo / Demanda:",
-            ["Todos os Módulos"] + sorted(list(all_modulos))
+            ["Todos os Módulos"] + all_modulos
         )
 
     with f_col2:
@@ -645,11 +579,11 @@ def show_control_panel(config):
             ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
         )
 
-    tipos_opcoes = ["Todos os Tipos de Solicitação"] + sorted(list(all_tipos_solic))
     with f_col3:
-        filtro_tipo_solic = st.selectbox(
-            "3. Tipo de Solicitação:",
-            tipos_opcoes
+        filtro_tipo_solic = st.text_input(
+            "3. Tipo de Solicitação (Palavra-chave):",
+            value="",
+            placeholder="Ex: Passe, Diploma, SEI..."
         )
 
     with f_col4:
@@ -657,6 +591,104 @@ def show_control_panel(config):
             "4. Data para Execução / Urgência:",
             ["Todas as Datas de Execução", "🚨 Urgentes (Próximas / Expiradas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"]
         )
+
+    # Sub-filtros de data customizada se selecionados
+    data_inicio_solic, data_fim_solic = None, None
+    if filtro_selecao == "Apenas Hoje":
+        data_inicio_solic, data_fim_solic = hoje, hoje
+    elif filtro_selecao == "Últimos 7 dias":
+        data_inicio_solic, data_fim_solic = hoje - timedelta(days=7), hoje
+    elif filtro_selecao == "Mês Atual":
+        data_inicio_solic, data_fim_solic = hoje.replace(day=1), hoje
+    elif filtro_selecao == "Últimos 6 meses":
+        data_inicio_solic, data_fim_solic = (hoje.replace(day=1) - timedelta(days=165)).replace(day=1), hoje
+    elif filtro_selecao == "Escolher Período Customizado":
+        cf_c1, cf_c2 = st.columns(2)
+        with cf_c1:
+            data_inicio_solic = st.date_input("Início da Solicitação (Filtro Global):", value=hoje - timedelta(days=30), format="DD/MM/YYYY")
+        with cf_c2:
+            data_fim_solic = st.date_input("Fim da Solicitação (Filtro Global):", value=hoje, format="DD/MM/YYYY")
+
+    data_inicio_exec, data_fim_exec = None, None
+    if filtro_execucao == "Escolher Período de Execução":
+        fe_c1, fe_c2 = st.columns(2)
+        with fe_c1:
+            data_inicio_exec = st.date_input("Início da Execução (Filtro Global):", value=hoje, format="DD/MM/YYYY")
+        with fe_c2:
+            data_fim_exec = st.date_input("Fim da Execução (Filtro Global):", value=hoje + timedelta(days=30), format="DD/MM/YYYY")
+
+    btn_c1, btn_c2 = st.columns([3, 1])
+    with btn_c1:
+        load_clicked = st.button("🔍 Consultar & Filtrar Planilhas", type="primary", use_container_width=True, key="btn_load_ctrl_panel")
+    with btn_c2:
+        reload_clicked = st.button("🔄 Atualizar Dados", use_container_width=True, key="btn_reload_ctrl_panel")
+
+    if reload_clicked and 'control_panel_cache' in st.session_state:
+        del st.session_state['control_panel_cache']
+
+    if load_clicked or 'control_panel_cache' in st.session_state:
+        if load_clicked or 'control_panel_cache' not in st.session_state:
+            all_activities = []
+            with st.spinner("Carregando e consolidando atividades de todas as planilhas monitoradas..."):
+                for sheet_id, info in config.items():
+                    modulo_nome = info.get('tipo', 'Demanda')
+                    sheet_name = info.get('name', 'Planilha')
+                    aba_nome = info.get('aba', 'Respostas ao formulário 1')
+
+                    try:
+                        data = get_sheet_data(sheet_id, aba_nome)
+                        if not data or len(data) < 2:
+                            continue
+                        header = data[0]
+                        rows = data[1:]
+
+                        for reversed_idx, row in enumerate(reversed(rows)):
+                            idx_real = len(rows) - reversed_idx + 1
+                            row_padded = row + [''] * (len(header) - len(row))
+                            data_linha, val_data_comp = get_row_date(row_padded, header)
+                            rel_data = extract_relevant_data(row_padded, header)
+                            card_items = sort_and_format_card_data(rel_data)
+
+                            nome_col = next((c for c in header if "nome" in str(c).lower() and "programa" not in str(c).lower()), None)
+                            nome_val = row_padded[header.index(nome_col)] if nome_col else f"Solicitante (Linha {idx_real})"
+                            if not str(nome_val).strip():
+                                nome_val = f"Solicitante da Linha {idx_real}"
+
+                            tipo_solic_val = ""
+                            for k, v in rel_data.items():
+                                if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
+                                    tipo_solic_val = str(v).strip()
+
+                            data_exec_val = ""
+                            data_exec_parsed = None
+                            for k, v in rel_data.items():
+                                if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
+                                    data_exec_val = str(v).strip()
+                                    data_exec_parsed = parse_date_br(data_exec_val)
+
+                            all_activities.append({
+                                "sheet_id": sheet_id,
+                                "modulo_nome": modulo_nome,
+                                "sheet_name": sheet_name,
+                                "aba_nome": aba_nome,
+                                "idx_real": idx_real,
+                                "nome_val": nome_val,
+                                "header": header,
+                                "row_padded": row_padded,
+                                "data_linha": data_linha,
+                                "val_data_comp": val_data_comp,
+                                "rel_data": rel_data,
+                                "card_items": card_items,
+                                "tipo_solic": tipo_solic_val,
+                                "data_exec_val": data_exec_val,
+                                "data_exec_parsed": data_exec_parsed
+                            })
+                    except Exception as e_load:
+                        st.warning(f"Não foi possível carregar os dados do módulo '{modulo_nome}': {e_load}")
+
+            st.session_state['control_panel_cache'] = all_activities
+        else:
+            all_activities = st.session_state['control_panel_cache']
 
     # Sub-filtros de data customizada se selecionados
     data_inicio_solic, data_fim_solic = None, None
@@ -890,6 +922,9 @@ def show_control_panel(config):
                     if st.button(f"🚀 Ir para {mod_nome}", key=f"btn_nav_mod_{sheet_id}", type="primary", use_container_width=True):
                         st.session_state.current_page = mod_nome
                         st.rerun()
+    else:
+        st.divider()
+        st.info("💡 **Consulta Sob Demanda**: Configure os filtros acima se desejar e clique no botão **'🔍 Consultar & Filtrar Planilhas'** para carregar os dados atualizados das planilhas.")
 
 def show_polare_page():
     st.title("📝 Polare - Lançamento de Atividades")
@@ -1903,57 +1938,8 @@ def show_demand_page(sheet_id, info):
         # Botão direto para a planilha no Google
         st.link_button("🌐 Acessar Planilha", f"https://docs.google.com/spreadsheets/d/{sheet_id}", use_container_width=True)
             
-    try:
-        data = get_sheet_data(sheet_id, info['aba'])
-    except Exception as e:
-        st.error("Erro de Autenticação: O aplicativo precisa que você refaça o login no navegador para poder editar planilhas.")
-        return
-        
-    if not data or len(data) < 2:
-        st.info("Nenhuma solicitação encontrada nesta planilha ainda.")
-        return
-        
-    header = data[0]
-    rows = data[1:]
-    
     st.divider()
-    
     hoje = datetime.now().date()
-
-    # Mapeamento prévio de linhas para relatórios, previsão e filtros simultâneos
-    all_tipos_solicitacao = set()
-    rows_parsed = []
-    
-    for reversed_idx, row in enumerate(reversed(rows)):
-        idx_real = len(rows) - reversed_idx + 1
-        row_padded = row + [''] * (len(header) - len(row))
-        data_linha, val_data_comp = get_row_date(row_padded, header)
-        rel_data = extract_relevant_data(row_padded, header)
-        
-        tipo_solic_val = ""
-        for k, v in rel_data.items():
-            if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
-                tipo_solic_val = str(v).strip()
-                if tipo_solic_val:
-                    all_tipos_solicitacao.add(tipo_solic_val)
-                    
-        data_exec_val = ""
-        data_exec_parsed = None
-        for k, v in rel_data.items():
-            if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
-                data_exec_val = str(v).strip()
-                data_exec_parsed = parse_date_br(data_exec_val)
-                
-        rows_parsed.append({
-            "idx_real": idx_real,
-            "row_padded": row_padded,
-            "data_linha": data_linha,
-            "val_data_comp": val_data_comp,
-            "rel_data": rel_data,
-            "tipo_solic": tipo_solic_val,
-            "data_exec_val": data_exec_val,
-            "data_exec_parsed": data_exec_parsed
-        })
 
     st.write("🔍 **Filtros Avançados de Busca e Período**")
     
@@ -1961,20 +1947,23 @@ def show_demand_page(sheet_id, info):
     with f_col1:
         filtro_selecao = st.selectbox(
             "1. Período de Solicitação:", 
-            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
+            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"],
+            key=f"sel_per_{sheet_id}"
         )
         
-    tipos_opcoes = ["Todos os Tipos de Solicitação"] + sorted(list(all_tipos_solicitacao))
     with f_col2:
-        filtro_tipo_solic = st.selectbox(
-            "2. Tipo de Solicitação:",
-            tipos_opcoes
+        filtro_tipo_solic_str = st.text_input(
+            "2. Tipo de Solicitação (Palavra-chave):",
+            value="",
+            placeholder="Digite para filtrar...",
+            key=f"inp_tp_{sheet_id}"
         )
         
     with f_col3:
         filtro_execucao = st.selectbox(
             "3. Data para Execução / Urgência:",
-            ["Todas as Datas de Execução", "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"]
+            ["Todas as Datas de Execução", "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"],
+            key=f"sel_exe_{sheet_id}"
         )
         
     # Sub-filtros de data customizada se selecionados
@@ -1990,17 +1979,82 @@ def show_demand_page(sheet_id, info):
     elif filtro_selecao == "Escolher Período Customizado":
         cf_c1, cf_c2 = st.columns(2)
         with cf_c1:
-            data_inicio_solic = st.date_input("Início da Solicitação:", value=hoje - timedelta(days=30), format="DD/MM/YYYY")
+            data_inicio_solic = st.date_input("Início da Solicitação:", value=hoje - timedelta(days=30), format="DD/MM/YYYY", key=f"dt_is_{sheet_id}")
         with cf_c2:
-            data_fim_solic = st.date_input("Fim da Solicitação:", value=hoje, format="DD/MM/YYYY")
+            data_fim_solic = st.date_input("Fim da Solicitação:", value=hoje, format="DD/MM/YYYY", key=f"dt_fs_{sheet_id}")
 
     data_inicio_exec, data_fim_exec = None, None
     if filtro_execucao == "Escolher Período de Execução":
         fe_c1, fe_c2 = st.columns(2)
         with fe_c1:
-            data_inicio_exec = st.date_input("Início da Execução:", value=hoje, format="DD/MM/YYYY")
+            data_inicio_exec = st.date_input("Início da Execução:", value=hoje, format="DD/MM/YYYY", key=f"dt_ie_{sheet_id}")
         with fe_c2:
-            data_fim_exec = st.date_input("Fim da Execução:", value=hoje + timedelta(days=30), format="DD/MM/YYYY")
+            data_fim_exec = st.date_input("Fim da Execução:", value=hoje + timedelta(days=30), format="DD/MM/YYYY", key=f"dt_fe_{sheet_id}")
+
+    btn_m1, btn_m2 = st.columns([3, 1])
+    with btn_m1:
+        load_sheet_btn = st.button("🔍 Consultar & Filtrar Planilha", type="primary", use_container_width=True, key=f"btn_ld_mod_{sheet_id}")
+    with btn_m2:
+        reload_sheet_btn = st.button("🔄 Atualizar Dados", use_container_width=True, key=f"btn_rl_mod_{sheet_id}")
+
+    cache_mod_key = f"sheet_cache_{sheet_id}"
+
+    if reload_sheet_btn and cache_mod_key in st.session_state:
+        del st.session_state[cache_mod_key]
+
+    if load_sheet_btn or cache_mod_key in st.session_state:
+        if load_sheet_btn or cache_mod_key not in st.session_state:
+            with st.spinner(f"Consultando dados da planilha '{info['name']}' no Google Drive..."):
+                try:
+                    data = get_sheet_data(sheet_id, info['aba'])
+                    st.session_state[cache_mod_key] = data
+                except Exception as e:
+                    st.error("Erro de Autenticação: O aplicativo precisa que você refaça o login no navegador para poder editar planilhas.")
+                    return
+        else:
+            data = st.session_state[cache_mod_key]
+
+        if not data or len(data) < 2:
+            st.info("Nenhuma solicitação encontrada nesta planilha ainda.")
+            return
+
+        header = data[0]
+        rows = data[1:]
+        
+        # Mapeamento prévio de linhas para relatórios, previsão e filtros simultâneos
+        all_tipos_solicitacao = set()
+        rows_parsed = []
+        
+        for reversed_idx, row in enumerate(reversed(rows)):
+            idx_real = len(rows) - reversed_idx + 1
+            row_padded = row + [''] * (len(header) - len(row))
+            data_linha, val_data_comp = get_row_date(row_padded, header)
+            rel_data = extract_relevant_data(row_padded, header)
+            
+            tipo_solic_val = ""
+            for k, v in rel_data.items():
+                if "tipo de solicitação" in k.lower() or "tipo de solicitacao" in k.lower():
+                    tipo_solic_val = str(v).strip()
+                    if tipo_solic_val:
+                        all_tipos_solicitacao.add(tipo_solic_val)
+                        
+            data_exec_val = ""
+            data_exec_parsed = None
+            for k, v in rel_data.items():
+                if "data para execução" in k.lower() or "data para execucao" in k.lower() or "prazo de execução" in k.lower():
+                    data_exec_val = str(v).strip()
+                    data_exec_parsed = parse_date_br(data_exec_val)
+                    
+            rows_parsed.append({
+                "idx_real": idx_real,
+                "row_padded": row_padded,
+                "data_linha": data_linha,
+                "val_data_comp": val_data_comp,
+                "rel_data": rel_data,
+                "tipo_solic": tipo_solic_val,
+                "data_exec_val": data_exec_val,
+                "data_exec_parsed": data_exec_parsed
+            })
 
     # Filtragem Simultânea das Demandas
     filtered_items = []
@@ -2412,6 +2466,9 @@ def show_demand_page(sheet_id, info):
 
     if count == 0:
         st.info("Nenhuma atividade encontrada para o filtro selecionado.")
+    else:
+        st.divider()
+        st.info("💡 **Consulta Sob Demanda**: Ajuste os filtros acima se desejar e clique no botão **'🔍 Consultar & Filtrar Planilha'** para carregar os dados desta planilha.")
 
 if __name__ == "__main__":
     main()
