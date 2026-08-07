@@ -2,6 +2,16 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v0.9.8] — 07/08/2026 (Horário: 15:41)
+
+### 🐛 Correção de Matrícula SPTrans & Fallback de Atualização no Google Sheets
+- **Fixação da Matrícula na Coluna A**:
+  - Ajustado o extrator de campos de transporte (`extract_transport_fields`) para fixar a busca da Matrícula do aluno estritamente na Coluna A (`MATRÍCULA`), impedindo que o sistema pule para colunas posteriores como a Coluna AK.
+- **Fallback de Atualização de Célula no Google Sheets (`update_sheet_cell`)**:
+  - Adicionado mecanismo de tolerância a falhas na atualização de dados no Google Drive. Se a aba especificada no `config.json` divergir do nome real da aba no Google Sheets, o sistema seleciona automaticamente a 1ª aba ativa, corrigindo o erro HTTP 400 (`Unable to parse range`).
+
+---
+
 ## [v0.9.5] — 06/08/2026 (Horário: 19:35)
 
 ### 🚀 Otimização de Performance e Carregamento Sob Demanda

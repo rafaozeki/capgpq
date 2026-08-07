@@ -1766,7 +1766,7 @@ def show_academic_analysis():
 def extract_transport_fields(row_padded, header):
     """Extrai todos os campos relevantes da linha da planilha usando busca flexível por palavras-chave."""
     import unicodedata
-    def find_val(keywords, exclude=[]):
+    def find_val(keywords, exclude=[], allow_empty=False):
         for i, col in enumerate(header):
             c_low = str(col).lower().strip()
             c_norm = "".join(c for c in unicodedata.normalize('NFD', c_low) if unicodedata.category(c) != 'Mn')
@@ -1789,14 +1789,14 @@ def extract_transport_fields(row_padded, header):
                         
             if matched and i < len(row_padded):
                 v = str(row_padded[i]).strip()
-                if v:
+                if v or allow_empty:
                     return v, str(col).strip(), i
         return "", "", None
 
     fields = {}
     
-    # 1. Matrícula
-    val, col, idx = find_val(["matrícula", "matricula", "ra"])
+    # 1. Matrícula (Fixa a busca na primeira coluna correspondente como a Coluna A, mesmo se célula estiver vazia)
+    val, col, idx = find_val(["matrícula", "matricula", "ra"], allow_empty=True)
     fields['matricula'] = {"val": val, "col_name": col, "col_idx": idx}
     
     # 2. Nome

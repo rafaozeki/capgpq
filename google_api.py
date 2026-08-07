@@ -137,18 +137,35 @@ def update_sheet_cell(spreadsheet_id, sheet_name, row_index, col_index, new_valu
     service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
     
     col_letter = col_num_to_letter(col_index)
-    cell_range = f"'{sheet_name}'!{col_letter}{row_index}"
+    clean_sheet = str(sheet_name).strip("'")
+    cell_range = f"'{clean_sheet}'!{col_letter}{row_index}"
     
     body = {
         'values': [[new_value]]
     }
     
-    result = service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id, 
-        range=cell_range,
-        valueInputOption="USER_ENTERED", 
-        body=body
-    ).execute()
+    try:
+        result = service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id, 
+            range=cell_range,
+            valueInputOption="USER_ENTERED", 
+            body=body
+        ).execute()
+    except Exception as e:
+        try:
+            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = meta.get('sheets', [])
+            if sheets:
+                first_tab_name = sheets[0]['properties']['title']
+                fallback_range = f"'{first_tab_name}'!{col_letter}{row_index}"
+                result = service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id, 
+                    range=fallback_range,
+                    valueInputOption="USER_ENTERED", 
+                    body=body
+                ).execute()
+        except Exception:
+            raise e
     
     try:
         get_sheet_data.clear()
