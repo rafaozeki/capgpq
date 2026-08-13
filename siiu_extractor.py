@@ -626,16 +626,8 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 for k, v in parsed_c.items():
                     if v and not aluno_info.get(k): aluno_info[k] = v
 
-        # 5. Abrir as abas visíveis no Chrome para o usuário visualizar e pausar 2 segundos
-        try:
-            close_sweetalert_overlays(page)
-            if baixar_comprovante:
-                page.evaluate(f"window.open('{pdf_comprovante_url}', '_blank');")
-            if baixar_historico:
-                page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
-            page.wait_for_timeout(2000)
-        except Exception:
-            pass
+        # Finalização da extração sem abrir janelas/popups externos do navegador
+        pass
 
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
@@ -677,8 +669,91 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         return _search_page_logic(page, query, programa, fallback_name)
     return _run_with_playwright_page(login, senha, _task)
 
+def extract_candidate_details_direct(login, senha, candidate, baixar_historico=True, baixar_comprovante=True):
+    """Extrai detalhes e PDF do candidato no SIIU via requisição HTTP direta sem abrir navegador."""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        })
+        
+        login_url = "https://notas-propgpq.siiu.unifesp.br/login"
+        res_login_page = session.get(login_url, timeout=8)
+        
+        csrf_token = None
+        soup = BeautifulSoup(res_login_page.text, "html.parser")
+        token_input = soup.find("input", {"name": "_token"}) or soup.find("meta", {"name": "csrf-token"})
+        if token_input:
+            csrf_token = token_input.get("value") or token_input.get("content")
+            
+        payload = {"username": login, "password": senha}
+        if csrf_token:
+            payload["_token"] = csrf_token
+            
+        res_post = session.post(login_url, data=payload, timeout=8, allow_redirects=True)
+        if "incorreto" in res_post.text.lower() or "credencial" in res_post.text.lower():
+            return {"status": "error", "message": "Usuário e/ou senha do SIIU incorretos."}
+            
+        target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
+        if not target_url or target_url == "#":
+            return {"status": "fallback"}
+            
+        full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
+        
+        res_cand = session.get(full_url, timeout=8)
+        if res_cand.status_code != 200:
+            return {"status": "fallback"}
+            
+        aluno_info = {
+            "matricula": candidate.get("matricula", ""),
+            "ra": candidate.get("matricula", ""),
+            "nome": candidate.get("nome", ""),
+            "curso": candidate.get("curso", ""),
+            "ingresso": candidate.get("ingresso", ""),
+            "nivel": candidate.get("nivel", ""),
+            "situacao": candidate.get("situacao", "")
+        }
+        
+        # Baixar o PDF do histórico via HTTP direto
+        base_url = full_url.split("?")[0].rstrip("/")
+        pdf_imprimir_url = base_url if base_url.endswith("secretaria-imprimir") else f"{base_url}/secretaria-imprimir"
+        
+        download_dir = os.path.join(os.getcwd(), "downloads")
+        os.makedirs(download_dir, exist_ok=True)
+        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
+        
+        res_pdf = session.get(pdf_imprimir_url, timeout=10)
+        if res_pdf.status_code == 200 and len(res_pdf.content) > 100:
+            with open(pdf_historico_path, "wb") as f:
+                f.write(res_pdf.content)
+                
+            parsed = parse_pdf_data(pdf_historico_path)
+            if parsed:
+                for k, v in parsed.items():
+                    if v: aluno_info[k] = v
+                    
+        return {
+            "status": "success",
+            "aluno_info": aluno_info,
+            "pdf_historico": pdf_historico_path if os.path.exists(pdf_historico_path) else None,
+            "pdf_comprovante": None,
+            "historico": aluno_info.get("historico", [])
+        }
+    except Exception as e:
+        print(f"Direct HTTP candidate details fallback: {e}")
+        return {"status": "fallback"}
+
 def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
-    """Extrai detalhes do candidato no SIIU via Playwright."""
+    """Extrai detalhes do candidato no SIIU via HTTP direto primeiro, com fallback para Playwright Headless."""
+    res_direct = extract_candidate_details_direct(login, senha, candidate, baixar_historico, baixar_comprovante)
+    if res_direct.get("status") == "success":
+        return res_direct
+
     def _task(page):
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
     return _run_with_playwright_page(login, senha, _task)
