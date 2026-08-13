@@ -2,6 +2,14 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.0.1] — 13/08/2026 (Horário: 13:03)
+
+### ✨ Adição do Programa de Pós-Graduação na Sequência do Portal SPTrans
+- **Novo Campo na Sequência de Cópia**:
+  - Incluído o item `"15. Programa de Pós-Graduação"` na caixa de cópia rápida do módulo **SPTrans - Requisição de Passe Escolar**, permitindo a cópia com 1 clique para preenchimento no portal da SPTrans.
+
+---
+
 ## [v1.0.0] — 13/08/2026 (Horário: 12:56)
 
 ### 🚀 Extrator SIIU Ultra-Rápido via Conexão Direta HTTP (Sem Janelas do Navegador)

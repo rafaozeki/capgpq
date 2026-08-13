@@ -2407,6 +2407,7 @@ def show_demand_page(sheet_id, info):
                                     ("12. Cidade", tf['cidade']['val']),
                                     ("13. Estado", tf['estado']['val']),
                                     ("14. Complemento", tf['complemento']['val']),
+                                    ("15. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
                                 ]
                                 
                                 seq_cols = st.columns(2)
