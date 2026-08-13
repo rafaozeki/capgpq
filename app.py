@@ -1867,7 +1867,7 @@ def extract_transport_fields(row_padded, header):
     fields['complemento'] = {"val": val, "col_name": col, "col_idx": idx}
     
     # 18. Programa / PPG
-    val, col, idx = find_val(["programa", "ppg", "curso"])
+    val, col, idx = find_val(["programa", "pós-graduação", "pos-graduacao", "ppg", "curso"], exclude=["término", "termino", "conclusão", "conclusao"])
     fields['ppg'] = {"val": val, "col_name": col, "col_idx": idx}
     
     # 19. EMTU adicionais

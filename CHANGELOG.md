@@ -2,6 +2,14 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.0.2] — 13/08/2026 (Horário: 15:27)
+
+### 🐛 Correção do Mapeamento do Campo Programa de Pós-Graduação
+- **Exclusão de Termos Conflitantes de Término do Curso**:
+  - Ajustado o extrator de campos para desconsiderar a coluna `"TÉRMINO DO CURSO"` ao buscar pelo `"Programa de Pós-Graduação"`. O campo `"15. Programa de Pós-Graduação"` agora extrai corretamente os dados da Coluna 24 (`Programa de Pós-Graduação:`).
+
+---
+
 ## [v1.0.1] — 13/08/2026 (Horário: 13:03)
 
 ### ✨ Adição do Programa de Pós-Graduação na Sequência do Portal SPTrans
