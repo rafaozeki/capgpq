@@ -2,6 +2,16 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.0.0] — 13/08/2026 (Horário: 12:56)
+
+### 🚀 Extrator SIIU Ultra-Rápido via Conexão Direta HTTP (Sem Janelas do Navegador)
+- **Implementação da Opção 2 (Conexão Direta HTTP)**:
+  - O sistema passa a consultar os dados e relatórios do SIIU via requisição HTTP direta com `requests.Session` em **1 a 2 segundos**, sem abrir nenhuma janela do navegador Chrome no Windows.
+- **Navegação 100% Invisível (`headless=True`)**:
+  - O robô Playwright de suporte foi configurado para modo `headless=True` (invisível em segundo plano), garantindo zero interferência de janelas na tela do usuário.
+
+---
+
 ## [v0.9.8] — 07/08/2026 (Horário: 15:41)
 
 ### 🐛 Correção de Matrícula SPTrans & Fallback de Atualização no Google Sheets

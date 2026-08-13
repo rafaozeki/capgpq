@@ -211,9 +211,9 @@ def _run_with_playwright_page(login, senha, task_fn):
     os.makedirs(download_dir, exist_ok=True)
     
     with sync_playwright() as p:
-        # Abrir o navegador Chromium visível (ou headless configurável) sem flags restritivas de PDF
+        # Abrir o navegador Chromium 100% invisível (headless=True) sem janelas no Windows
         browser = p.chromium.launch(
-            headless=False,
+            headless=True,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -683,8 +683,126 @@ def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
     return _run_with_playwright_page(login, senha, _task)
 
+def search_and_extract_student_direct(login, senha, query, programa, fallback_name=None):
+    """Realiza a busca no SIIU via requisição HTTP direta em 1-2s sem abrir navegador."""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        })
+        
+        login_url = "https://notas-propgpq.siiu.unifesp.br/login"
+        res_login_page = session.get(login_url, timeout=8)
+        
+        csrf_token = None
+        soup = BeautifulSoup(res_login_page.text, "html.parser")
+        token_input = soup.find("input", {"name": "_token"}) or soup.find("meta", {"name": "csrf-token"})
+        if token_input:
+            csrf_token = token_input.get("value") or token_input.get("content")
+            
+        payload = {"username": login, "password": senha}
+        if csrf_token:
+            payload["_token"] = csrf_token
+            
+        res_post = session.post(login_url, data=payload, timeout=8, allow_redirects=True)
+        if "incorreto" in res_post.text.lower() or "credencial" in res_post.text.lower():
+            return {"status": "error", "message": "Usuário e/ou senha do SIIU incorretos."}
+            
+        discentes_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
+        res_disc = session.get(discentes_url, timeout=8)
+        if res_disc.status_code != 200:
+            return {"status": "fallback"}
+            
+        search_data = {
+            "descricao": query,
+            "areas_prin_codigo": "0"
+        }
+        if csrf_token:
+            search_data["_token"] = csrf_token
+            
+        res_search = session.post(discentes_url, data=search_data, timeout=8)
+        soup_search = BeautifulSoup(res_search.text, "html.parser")
+        
+        rows = soup_search.select("table tbody tr")
+        cands = []
+        for idx, tr in enumerate(rows):
+            cols = [td.get_text(strip=True) for td in tr.find_all("td")]
+            if cols and len(cols) >= 6:
+                mat = cols[0]
+                nome = cols[1]
+                curso = cols[2]
+                ing = cols[3]
+                nivel = cols[4]
+                sit = cols[5]
+                if "Nenhum registro" in nome or "Nenhum registro" in mat:
+                    continue
+                
+                cands.append({
+                    "idx": idx,
+                    "matricula": mat,
+                    "nome": nome,
+                    "curso": curso,
+                    "ingresso": ing,
+                    "nivel": nivel,
+                    "situacao": sit,
+                    "historico_url": None,
+                    "action_urls": []
+                })
+                
+        if cands:
+            return {"status": "success", "candidates": cands}
+        elif fallback_name and query != fallback_name:
+            search_data["descricao"] = fallback_name
+            res_fb = session.post(discentes_url, data=search_data, timeout=8)
+            soup_fb = BeautifulSoup(res_fb.text, "html.parser")
+            rows_fb = soup_fb.select("table tbody tr")
+            cands_fb = []
+            for idx, tr in enumerate(rows_fb):
+                cols = [td.get_text(strip=True) for td in tr.find_all("td")]
+                if cols and len(cols) >= 6:
+                    mat = cols[0]
+                    nome = cols[1]
+                    curso = cols[2]
+                    ing = cols[3]
+                    nivel = cols[4]
+                    sit = cols[5]
+                    if "Nenhum registro" in nome or "Nenhum registro" in mat:
+                        continue
+                    cands_fb.append({
+                        "idx": idx,
+                        "matricula": mat,
+                        "nome": nome,
+                        "curso": curso,
+                        "ingresso": ing,
+                        "nivel": nivel,
+                        "situacao": sit,
+                        "historico_url": None,
+                        "action_urls": []
+                    })
+            if cands_fb:
+                return {"status": "success", "candidates": cands_fb}
+                
+        return {"status": "fallback"}
+    except Exception as e:
+        print(f"Direct HTTP fallback: {e}")
+        return {"status": "fallback"}
+
 def search_and_extract_student(login, senha, query, programa, cached_driver=None, fallback_name=None):
-    """Busca e extrai detalhes do discente no SIIU em uma ÚNICA sessão do Playwright."""
+    """Busca e extrai detalhes do discente no SIIU usando primeiramente Conexão Direta HTTP e fallback para Playwright Headless."""
+    # 1. Tentar busca ultra-rápida via Conexão Direta HTTP (1 a 2 segundos)
+    res_direct = search_and_extract_student_direct(login, senha, query, programa, fallback_name)
+    if res_direct.get("status") in ("success", "error"):
+        if res_direct.get("candidates"):
+            return res_direct
+        elif res_direct.get("status") == "error":
+            return res_direct
+
+    # 2. Fallback para Playwright Headless (100% invisível em segundo plano)
     def _task(page):
         search_res = _search_page_logic(page, query, programa, fallback_name)
         if search_res.get("status") == "error":
