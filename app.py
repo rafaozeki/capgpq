@@ -2332,7 +2332,7 @@ def show_demand_page(sheet_id, info):
 
             status_prefix = f"✅ **CONCLUÍDO ({executante_hdr})** | " if executante_hdr else ""
                 
-            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}"):
+            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=False):
                 relevant_data = extract_relevant_data(row_padded, header)
                 card_items = sort_and_format_card_data(relevant_data)
                 
@@ -2581,6 +2581,39 @@ def show_demand_page(sheet_id, info):
                                         st.markdown(f"**{l_seq}:**")
                                         st.code(v_seq or "Não informado", language="text")
                                         
+                                # Campo "Observações de cadastro:" com botão "Inserir na planilha" (Coluna CADASTRO)
+                                st.write("---")
+                                col_cad_idx = None
+                                for idx_h, col_h in enumerate(header):
+                                    if str(col_h).strip().upper() == "CADASTRO":
+                                        col_cad_idx = idx_h
+                                        break
+                                if col_cad_idx is None and len(header) > 19:
+                                    col_cad_idx = 19
+
+                                val_cad_atual = row_padded[col_cad_idx].strip() if (col_cad_idx is not None and col_cad_idx < len(row_padded)) else ""
+                                
+                                st.markdown("##### 📝 Observações de cadastro:")
+                                obs_col1, obs_col2 = st.columns([3, 1])
+                                with obs_col1:
+                                    obs_input = st.text_input(
+                                        "Observações de cadastro:",
+                                        value=val_cad_atual,
+                                        placeholder="Digite aqui informações pertinentes sobre o cadastro do aluno...",
+                                        key=f"inp_obs_cad_{sheet_id}_{idx_real_na_planilha}",
+                                        label_visibility="collapsed"
+                                    )
+                                with obs_col2:
+                                    btn_obs_k = f"btn_obs_cad_{sheet_id}_{idx_real_na_planilha}"
+                                    if st.button("💾 Inserir na planilha", key=btn_obs_k, use_container_width=True):
+                                        try:
+                                            if col_cad_idx is not None:
+                                                update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_cad_idx, obs_input)
+                                                st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
+                                                st.rerun()
+                                        except Exception as e_obs:
+                                            st.error(f"Erro ao gravar observação na planilha: {e_obs}")
+                                        
                             else: # EMTU
                                 val_cpf_emtu = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
                                 val_rg_emtu = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
@@ -2645,27 +2678,31 @@ def show_demand_page(sheet_id, info):
                             val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
                             val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
 
-                            if val_exec_atual or val_dt_atual:
-                                st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data/Horário da Execução:** `{val_dt_atual or 'Não informado'}`")
+                            is_ja_confirmado = bool(val_exec_atual or val_dt_atual)
 
-                            btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
-                            if st.button(f"✅ Confirmar cadastro na {portal_curto}", key=btn_confirm_k, type="primary", use_container_width=True):
-                                executante_usuario = st.session_state.get('login_siiu', '').strip()
-                                if not executante_usuario:
-                                    executante_usuario = "Usuário CaPGPq"
-                                    
-                                agora_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                                
-                                try:
-                                    if col_exec_idx is not None:
-                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
-                                    if col_dt_idx is not None:
-                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, agora_timestamp)
+                            if is_ja_confirmado:
+                                st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data da Execução:** `{val_dt_atual or 'Não informado'}`")
+                                btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
+                                st.button("✅ Cadastro confirmado", key=btn_confirm_k, disabled=True, use_container_width=True)
+                            else:
+                                btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
+                                if st.button(f"✅ Confirmar cadastro na {portal_curto}", key=btn_confirm_k, type="primary", use_container_width=True):
+                                    executante_usuario = st.session_state.get('login_siiu', '').strip()
+                                    if not executante_usuario:
+                                        executante_usuario = "Usuário CaPGPq"
                                         
-                                    st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{agora_timestamp}**!")
-                                    st.rerun()
-                                except Exception as e_conf:
-                                    st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
+                                    data_apenas = datetime.now().strftime("%d/%m/%Y")
+                                    
+                                    try:
+                                        if col_exec_idx is not None:
+                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
+                                        if col_dt_idx is not None:
+                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, data_apenas)
+                                            
+                                        st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
+                                        st.rerun()
+                                    except Exception as e_conf:
+                                        st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
 
         if count == 0:
             st.info("Nenhuma atividade encontrada para o filtro selecionado.")

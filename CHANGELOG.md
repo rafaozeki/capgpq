@@ -2,6 +2,19 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.6] — 24/08/2026 (Horário: 18:13)
+
+### 📝 Campo Observações de Cadastro & Confirmação com Apenas Data e Recolhimento de Moldura
+- **Novo Campo "Observações de cadastro:" com Botão "Inserir na planilha"**:
+  - Inserido campo de texto logo após a sequência de cópia 1 a 16 no módulo SPTrans para anotação de observações, gravando diretamente na coluna `"CADASTRO"` (Coluna 19) da planilha Google.
+- **Gravação de Apenas Data em "DATA DA EXECUÇÃO"**:
+  - Ao clicar em "Confirmar cadastro na SPTrans", o sistema agora grava exclusivamente a data no padrão brasileiro `DD/MM/YYYY`, sem incluir o horário.
+- **Botão "Cadastro confirmado" (Não-Clicável) & Recolhimento Automático da Moldura**:
+  - Uma vez confirmado o cadastro, o botão se transforma em **`✅ Cadastro confirmado`** em estado desabilitado (não-clicável).
+  - O card do discente é recolhido automaticamente (`expanded=False`), liberando espaço visual na tela.
+
+---
+
 ## [v1.1.5] — 24/08/2026 (Horário: 13:39)
 
 ### 🔄 Alinhamento Completo de Busca & Conferência EMTU com as Diretrizes da SPTrans
