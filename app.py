@@ -2470,7 +2470,19 @@ def show_demand_page(sheet_id, info):
                                 except Exception as ex_conf:
                                     st.error(f"Erro ao extrair vínculo: {ex_conf}")
 
-                    # Exibir resultado da conferência
+                    # Preparar componentes de RG
+                    rg_siiu_raw = ainfo.get('rg', '')
+                    rg_siiu_parts = parse_rg_components(rg_siiu_raw)
+                    siiu_rg_num = rg_siiu_parts['numero'] if rg_siiu_parts['numero'] else rg_siiu_raw
+                    siiu_rg_org = rg_siiu_parts['orgao'] if rg_siiu_parts['orgao'] else ainfo.get('orgao_emissor', rg_siiu_raw)
+                    siiu_rg_uf = rg_siiu_parts['uf'] if rg_siiu_parts['uf'] else ainfo.get('uf_rg', rg_siiu_raw)
+
+                    plan_rg_parts = parse_rg_components(tf['rg']['val'])
+                    plan_rg_num = plan_rg_parts['numero'] if plan_rg_parts['numero'] else tf['rg']['val']
+                    plan_rg_org = tf['orgao_emissor']['val'] if tf['orgao_emissor']['val'] else plan_rg_parts['orgao']
+                    plan_rg_uf = tf['uf_rg']['val'] if tf['uf_rg']['val'] else plan_rg_parts['uf']
+
+                    # Exibir resultado da conferência do SIIU (se houver)
                     res_siiu = st.session_state.get(state_key_res)
                     if res_siiu:
                         if res_siiu.get("status") == "error":
@@ -2478,17 +2490,6 @@ def show_demand_page(sheet_id, info):
                         elif res_siiu.get("status") == "success":
                             ainfo = res_siiu.get("aluno_info", {})
                             st.markdown("#### 📊 Resultado da Conferência (Planilha vs. SIIU)")
-                        
-                            rg_siiu_raw = ainfo.get('rg', '')
-                            rg_siiu_parts = parse_rg_components(rg_siiu_raw)
-                            siiu_rg_num = rg_siiu_parts['numero'] if rg_siiu_parts['numero'] else rg_siiu_raw
-                            siiu_rg_org = rg_siiu_parts['orgao'] if rg_siiu_parts['orgao'] else ainfo.get('orgao_emissor', rg_siiu_raw)
-                            siiu_rg_uf = rg_siiu_parts['uf'] if rg_siiu_parts['uf'] else ainfo.get('uf_rg', rg_siiu_raw)
-
-                            plan_rg_parts = parse_rg_components(tf['rg']['val'])
-                            plan_rg_num = plan_rg_parts['numero'] if plan_rg_parts['numero'] else tf['rg']['val']
-                            plan_rg_org = tf['orgao_emissor']['val'] if tf['orgao_emissor']['val'] else plan_rg_parts['orgao']
-                            plan_rg_uf = tf['uf_rg']['val'] if tf['uf_rg']['val'] else plan_rg_parts['uf']
 
                             # Definição dos campos a conferir conforme solicitação do usuário
                             if is_sptrans:
@@ -2547,162 +2548,163 @@ def show_demand_page(sheet_id, info):
                                             except Exception as e_upd:
                                                 st.error(f"Erro ao atualizar planilha: {e_upd}")
                                             
-                            st.divider()
-                            st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
-                            st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
-                            
-                            if is_sptrans:
-                                val_rg_formatado = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
-                                val_cpf_formatado = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
-                                val_cep_formatado = (tf['cep']['val'] or '').replace('.', '').strip()
+                    # Sequência de Cópia para Cadastro no Portal (sempre visível)
+                    st.divider()
+                    st.markdown(f"### 📋 Sequência de Cópia para Cadastro no Portal **{modulo_nome}**")
+                    st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
+                    
+                    if is_sptrans:
+                        val_rg_formatado = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
+                        val_cpf_formatado = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
+                        val_cep_formatado = (tf['cep']['val'] or '').replace('.', '').strip()
 
-                                seq_sptrans = [
-                                    ("1. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
-                                    ("2. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
-                                    ("3. RG", val_rg_formatado),
-                                    ("4. UF Emissor", tf['uf_rg']['val'] or plan_rg_parts['uf'] or siiu_rg_uf or ainfo.get('uf_rg', '')),
-                                    ("5. CPF", val_cpf_formatado),
-                                    ("6. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
-                                    ("7. Telefone Residencial", tf['tel_res']['val']),
-                                    ("8. Telefone Celular", tf['tel_cel']['val']),
-                                    ("9. Endereço de E-mail", tf['email']['val']),
-                                    ("10. CEP", val_cep_formatado),
-                                    ("11. RUA (Logradouro)", tf['rua']['val']),
-                                    ("12. Número", tf['numero']['val']),
-                                    ("13. Bairro", tf['bairro']['val']),
-                                    ("14. Cidade", tf['cidade']['val']),
-                                    ("15. Estado", tf['estado']['val']),
-                                    ("16. Complemento", tf['complemento']['val']),
-                                ]
+                        seq_sptrans = [
+                            ("1. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                            ("2. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
+                            ("3. RG", val_rg_formatado),
+                            ("4. UF Emissor", tf['uf_rg']['val'] or plan_rg_parts['uf'] or siiu_rg_uf or ainfo.get('uf_rg', '')),
+                            ("5. CPF", val_cpf_formatado),
+                            ("6. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
+                            ("7. Telefone Residencial", tf['tel_res']['val']),
+                            ("8. Telefone Celular", tf['tel_cel']['val']),
+                            ("9. Endereço de E-mail", tf['email']['val']),
+                            ("10. CEP", val_cep_formatado),
+                            ("11. RUA (Logradouro)", tf['rua']['val']),
+                            ("12. Número", tf['numero']['val']),
+                            ("13. Bairro", tf['bairro']['val']),
+                            ("14. Cidade", tf['cidade']['val']),
+                            ("15. Estado", tf['estado']['val']),
+                            ("16. Complemento", tf['complemento']['val']),
+                        ]
+                        
+                        seq_cols = st.columns(2)
+                        for idx_seq, (l_seq, v_seq) in enumerate(seq_sptrans):
+                            with seq_cols[idx_seq % 2]:
+                                st.markdown(f"**{l_seq}:**")
+                                st.code(v_seq or "Não informado", language="text")
                                 
-                                seq_cols = st.columns(2)
-                                for idx_seq, (l_seq, v_seq) in enumerate(seq_sptrans):
-                                    with seq_cols[idx_seq % 2]:
-                                        st.markdown(f"**{l_seq}:**")
-                                        st.code(v_seq or "Não informado", language="text")
-                                        
-                                # Campo "Observações de cadastro:" com botão "Inserir na planilha" (Coluna CADASTRO)
-                                st.write("---")
-                                col_cad_idx = None
-                                for idx_h, col_h in enumerate(header):
-                                    if str(col_h).strip().upper() == "CADASTRO":
-                                        col_cad_idx = idx_h
-                                        break
-                                if col_cad_idx is None and len(header) > 19:
-                                    col_cad_idx = 19
+                        # Campo "Observações de cadastro:" com botão "Inserir na planilha" (Coluna CADASTRO)
+                        st.write("---")
+                        col_cad_idx = None
+                        for idx_h, col_h in enumerate(header):
+                            if str(col_h).strip().upper() == "CADASTRO":
+                                col_cad_idx = idx_h
+                                break
+                        if col_cad_idx is None and len(header) > 19:
+                            col_cad_idx = 19
 
-                                val_cad_atual = row_padded[col_cad_idx].strip() if (col_cad_idx is not None and col_cad_idx < len(row_padded)) else ""
-                                
-                                st.markdown("##### 📝 Observações de cadastro:")
-                                obs_col1, obs_col2 = st.columns([3, 1])
-                                with obs_col1:
-                                    obs_input = st.text_input(
-                                        "Observações de cadastro:",
-                                        value=val_cad_atual,
-                                        placeholder="Digite aqui informações pertinentes sobre o cadastro do aluno...",
-                                        key=f"inp_obs_cad_{sheet_id}_{idx_real_na_planilha}",
-                                        label_visibility="collapsed"
-                                    )
-                                with obs_col2:
-                                    btn_obs_k = f"btn_obs_cad_{sheet_id}_{idx_real_na_planilha}"
-                                    if st.button("💾 Inserir na planilha", key=btn_obs_k, use_container_width=True):
-                                        try:
-                                            if col_cad_idx is not None:
-                                                update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_cad_idx, obs_input)
-                                                st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
-                                                st.rerun()
-                                        except Exception as e_obs:
-                                            st.error(f"Erro ao gravar observação na planilha: {e_obs}")
-                                        
-                            else: # EMTU
-                                val_cpf_emtu = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
-                                val_rg_emtu = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
-                                val_cep_emtu = (tf['cep']['val'] or '').replace('.', '').strip()
-
-                                seq_emtu = [
-                                    ("1. CPF", val_cpf_emtu),
-                                    ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
-                                    ("3. RG", val_rg_emtu),
-                                    ("4. CEP", val_cep_emtu),
-                                    ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
-                                    ("6. Frequência", tf['frequencia']['val']),
-                                    ("7. Período do curso", tf['periodo']['val']),
-                                    ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
-                                ]
-                                
-                                seq_cols = st.columns(2)
-                                for idx_seq, (l_seq, v_seq) in enumerate(seq_emtu):
-                                    with seq_cols[idx_seq % 2]:
-                                        st.markdown(f"**{l_seq}:**")
-                                        st.code(v_seq or "Não informado", language="text")
-
-                                st.write("---")
-                                st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
-                                comp_emtu = [
-                                    ("SITUAÇÃO", tf['situacao']['val']),
-                                    ("Tipo de benefício", tf['beneficio']['val']),
-                                    ("RUA", tf['rua']['val']),
-                                    ("Número", tf['numero']['val']),
-                                    ("Bairro", tf['bairro']['val']),
-                                    ("Cidade", tf['cidade']['val']),
-                                    ("Estado", tf['estado']['val']),
-                                    ("Complemento", tf['complemento']['val']),
-                                    ("Endereço de e-mail", tf['email']['val']),
-                                    ("Situação cadastral", tf['sit_cadastral']['val']),
-                                    ("Data do Cadastro", tf['data_cadastro']['val']),
-                                ]
-                                c_cols = st.columns(3)
-                                for idx_comp, (lc, vc) in enumerate(comp_emtu):
-                                    with c_cols[idx_comp % 3]:
-                                        st.markdown(f"**{lc}:**")
-                                        st.code(vc or "Não informado", language="text")
-
-                            st.write("---")
-                            portal_curto = "SPTrans" if is_sptrans else "EMTU"
-                            st.markdown(f"#### 🟢 Efetivação do Cadastro ({portal_curto})")
-                            
-                            # Busca dinâmica das colunas 'POLARE / EXECUTANTE DA ATIVIDADE' e 'DATA DA EXECUÇÃO'
-                            col_exec_idx = None
-                            col_dt_idx = None
-                            import unicodedata
-                            for idx_h, col_h in enumerate(header):
-                                c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
-                                if ("polare" in c_norm or "executante" in c_norm):
-                                    col_exec_idx = idx_h
-                                elif "data" in c_norm and "execucao" in c_norm:
-                                    col_dt_idx = idx_h
-                                    
-                            if col_exec_idx is None and len(header) > 38: col_exec_idx = 38
-                            if col_dt_idx is None and len(header) > 39: col_dt_idx = 39
-
-                            val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
-                            val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
-
-                            is_ja_confirmado = bool(val_exec_atual or val_dt_atual)
-
-                            if is_ja_confirmado:
-                                st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data da Execução:** `{val_dt_atual or 'Não informado'}`")
-                                btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
-                                st.button("✅ Cadastro confirmado", key=btn_confirm_k, disabled=True, use_container_width=True)
-                            else:
-                                btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
-                                if st.button(f"✅ Confirmar cadastro na {portal_curto}", key=btn_confirm_k, type="primary", use_container_width=True):
-                                    executante_usuario = st.session_state.get('login_siiu', '').strip()
-                                    if not executante_usuario:
-                                        executante_usuario = "Usuário CaPGPq"
-                                        
-                                    data_apenas = datetime.now().strftime("%d/%m/%Y")
-                                    
-                                    try:
-                                        if col_exec_idx is not None:
-                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
-                                        if col_dt_idx is not None:
-                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, data_apenas)
-                                            
-                                        st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
+                        val_cad_atual = row_padded[col_cad_idx].strip() if (col_cad_idx is not None and col_cad_idx < len(row_padded)) else ""
+                        
+                        st.markdown("##### 📝 Observações de cadastro:")
+                        obs_col1, obs_col2 = st.columns([3, 1])
+                        with obs_col1:
+                            obs_input = st.text_input(
+                                "Observações de cadastro:",
+                                value=val_cad_atual,
+                                placeholder="Digite aqui informações pertinentes sobre o cadastro do aluno...",
+                                key=f"inp_obs_cad_{sheet_id}_{idx_real_na_planilha}",
+                                label_visibility="collapsed"
+                            )
+                        with obs_col2:
+                            btn_obs_k = f"btn_obs_cad_{sheet_id}_{idx_real_na_planilha}"
+                            if st.button("💾 Inserir na planilha", key=btn_obs_k, use_container_width=True):
+                                try:
+                                    if col_cad_idx is not None:
+                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_cad_idx, obs_input)
+                                        st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
                                         st.rerun()
-                                    except Exception as e_conf:
-                                        st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
+                                except Exception as e_obs:
+                                    st.error(f"Erro ao gravar observação na planilha: {e_obs}")
+                                
+                    else: # EMTU
+                        val_cpf_emtu = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
+                        val_rg_emtu = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
+                        val_cep_emtu = (tf['cep']['val'] or '').replace('.', '').strip()
+
+                        seq_emtu = [
+                            ("1. CPF", val_cpf_emtu),
+                            ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
+                            ("3. RG", val_rg_emtu),
+                            ("4. CEP", val_cep_emtu),
+                            ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                            ("6. Frequência", tf['frequencia']['val']),
+                            ("7. Período do curso", tf['periodo']['val']),
+                            ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
+                        ]
+                        
+                        seq_cols = st.columns(2)
+                        for idx_seq, (l_seq, v_seq) in enumerate(seq_emtu):
+                            with seq_cols[idx_seq % 2]:
+                                st.markdown(f"**{l_seq}:**")
+                                st.code(v_seq or "Não informado", language="text")
+
+                        st.write("---")
+                        st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
+                        comp_emtu = [
+                            ("SITUAÇÃO", tf['situacao']['val']),
+                            ("Tipo de benefício", tf['beneficio']['val']),
+                            ("RUA", tf['rua']['val']),
+                            ("Número", tf['numero']['val']),
+                            ("Bairro", tf['bairro']['val']),
+                            ("Cidade", tf['cidade']['val']),
+                            ("Estado", tf['estado']['val']),
+                            ("Complemento", tf['complemento']['val']),
+                            ("Endereço de e-mail", tf['email']['val']),
+                            ("Situação cadastral", tf['sit_cadastral']['val']),
+                            ("Data do Cadastro", tf['data_cadastro']['val']),
+                        ]
+                        c_cols = st.columns(3)
+                        for idx_comp, (lc, vc) in enumerate(comp_emtu):
+                            with c_cols[idx_comp % 3]:
+                                st.markdown(f"**{lc}:**")
+                                st.code(vc or "Não informado", language="text")
+
+                    st.write("---")
+                    portal_curto = "SPTrans" if is_sptrans else "EMTU"
+                    st.markdown(f"#### 🟢 Efetivação do Cadastro ({portal_curto})")
+                    
+                    # Busca dinâmica das colunas 'POLARE / EXECUTANTE DA ATIVIDADE' e 'DATA DA EXECUÇÃO'
+                    col_exec_idx = None
+                    col_dt_idx = None
+                    import unicodedata
+                    for idx_h, col_h in enumerate(header):
+                        c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
+                        if ("polare" in c_norm or "executante" in c_norm):
+                            col_exec_idx = idx_h
+                        elif "data" in c_norm and "execucao" in c_norm:
+                            col_dt_idx = idx_h
+                            
+                    if col_exec_idx is None and len(header) > 38: col_exec_idx = 38
+                    if col_dt_idx is None and len(header) > 39: col_dt_idx = 39
+
+                    val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
+                    val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
+
+                    is_ja_confirmado = bool(val_exec_atual or val_dt_atual)
+
+                    if is_ja_confirmado:
+                        st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data da Execução:** `{val_dt_atual or 'Não informado'}`")
+                        btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
+                        st.button("✅ Cadastro confirmado", key=btn_confirm_k, disabled=True, use_container_width=True)
+                    else:
+                        btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
+                        if st.button(f"✅ Confirmar cadastro na {portal_curto}", key=btn_confirm_k, type="primary", use_container_width=True):
+                            executante_usuario = st.session_state.get('login_siiu', '').strip()
+                            if not executante_usuario:
+                                executante_usuario = "Usuário CaPGPq"
+                                
+                            data_apenas = datetime.now().strftime("%d/%m/%Y")
+                            
+                            try:
+                                if col_exec_idx is not None:
+                                    update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
+                                if col_dt_idx is not None:
+                                    update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, data_apenas)
+                                    
+                                st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
+                                st.rerun()
+                            except Exception as e_conf:
+                                st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
 
         if count == 0:
             st.info("Nenhuma atividade encontrada para o filtro selecionado.")
