@@ -2330,6 +2330,10 @@ def show_demand_page(sheet_id, info):
                 if ("polare" in c_norm or "executante" in c_norm) and idx_h < len(row_padded):
                     executante_hdr = str(row_padded[idx_h]).strip()
 
+            just_conf_card = st.session_state.get(f"just_confirmed_{sheet_id}_{idx_real_na_planilha}")
+            if just_conf_card and not executante_hdr:
+                executante_hdr = just_conf_card.get("executante", "")
+
             status_prefix = f"✅ **CONCLUÍDO ({executante_hdr})** | " if executante_hdr else ""
                 
             with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=False):
@@ -2546,6 +2550,12 @@ def show_demand_page(sheet_id, info):
                                         if st.button(f"✏️ Atualizar Planilha com '{val_siiu}'", key=btn_fix_k):
                                             try:
                                                 update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_i, val_siiu)
+                                                if cache_mod_key in st.session_state:
+                                                    del st.session_state[cache_mod_key]
+                                                try:
+                                                    st.cache_data.clear()
+                                                except Exception:
+                                                    pass
                                                 st.success("Planilha atualizada com sucesso! Recarregando...")
                                                 st.rerun()
                                             except Exception as e_upd:
@@ -2614,6 +2624,12 @@ def show_demand_page(sheet_id, info):
                                 try:
                                     if col_cad_idx is not None:
                                         update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_cad_idx, obs_input)
+                                        if cache_mod_key in st.session_state:
+                                            del st.session_state[cache_mod_key]
+                                        try:
+                                            st.cache_data.clear()
+                                        except Exception:
+                                            pass
                                         st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
                                         st.rerun()
                                 except Exception as e_obs:
@@ -2683,6 +2699,11 @@ def show_demand_page(sheet_id, info):
                     val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
                     val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
 
+                    just_conf = st.session_state.get(f"just_confirmed_{sheet_id}_{idx_real_na_planilha}")
+                    if just_conf:
+                        if not val_exec_atual: val_exec_atual = just_conf.get("executante", "")
+                        if not val_dt_atual: val_dt_atual = just_conf.get("data", "")
+
                     is_ja_confirmado = bool(val_exec_atual or val_dt_atual)
 
                     if is_ja_confirmado:
@@ -2704,6 +2725,16 @@ def show_demand_page(sheet_id, info):
                                 if col_dt_idx is not None:
                                     update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, data_apenas)
                                     
+                                st.session_state[f"just_confirmed_{sheet_id}_{idx_real_na_planilha}"] = {
+                                    "executante": executante_usuario,
+                                    "data": data_apenas
+                                }
+                                if cache_mod_key in st.session_state:
+                                    del st.session_state[cache_mod_key]
+                                try:
+                                    st.cache_data.clear()
+                                except Exception:
+                                    pass
                                 st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
                                 st.rerun()
                             except Exception as e_conf:
