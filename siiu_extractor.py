@@ -663,3 +663,7 @@ def search_and_extract_student(login, senha, query, programa, cached_driver=None
             return {"status": "success", "single": False, "candidates": candidates}
             
     return _run_with_playwright_page(login, senha, _task)
+
+def init_cached_driver(login=None, senha=None):
+    """Stub de compatibilidade retroativa."""
+    return (True, None)
