@@ -2,6 +2,16 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.3] — 24/08/2026 (Horário: 13:23)
+
+### ✂️ Formatação sem Pontos para RG, CPF e CEP na Sequência SPTrans
+- **Remoção de Pontos para Compatibilidade com Portal SPTrans**:
+  - **`3. RG`**: Exibido sem pontos e mantendo o traço `-` (ex: `52783871-8`).
+  - **`5. CPF`**: Exibido sem pontos (ex: `123456789-00` / `12345678900`).
+  - **`10. CEP`**: Exibido sem pontos (ex: `04023-062` / `04023062`).
+
+---
+
 ## [v1.1.2] — 24/08/2026 (Horário: 13:15)
 
 ### 🪪 Reconhecimento Inteligente de Órgão/UF de RG & Reordenação da Sequência SPTrans

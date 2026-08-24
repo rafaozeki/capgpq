@@ -2552,17 +2552,21 @@ def show_demand_page(sheet_id, info):
                             st.info("Passe o mouse sobre os blocos abaixo para copiar os dados na ordem exata de preenchimento do portal!")
                             
                             if is_sptrans:
+                                val_rg_formatado = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
+                                val_cpf_formatado = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
+                                val_cep_formatado = (tf['cep']['val'] or '').replace('.', '').strip()
+
                                 seq_sptrans = [
                                     ("1. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
                                     ("2. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
-                                    ("3. RG", plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')),
+                                    ("3. RG", val_rg_formatado),
                                     ("4. UF Emissor", tf['uf_rg']['val'] or plan_rg_parts['uf'] or siiu_rg_uf or ainfo.get('uf_rg', '')),
-                                    ("5. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                                    ("5. CPF", val_cpf_formatado),
                                     ("6. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
                                     ("7. Telefone Residencial", tf['tel_res']['val']),
                                     ("8. Telefone Celular", tf['tel_cel']['val']),
                                     ("9. Endereço de E-mail", tf['email']['val']),
-                                    ("10. CEP", tf['cep']['val']),
+                                    ("10. CEP", val_cep_formatado),
                                     ("11. RUA (Logradouro)", tf['rua']['val']),
                                     ("12. Número", tf['numero']['val']),
                                     ("13. Bairro", tf['bairro']['val']),
