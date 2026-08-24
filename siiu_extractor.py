@@ -480,11 +480,43 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             except Exception as e_nav:
                 print(f"Aviso ao navegar para {full_url}: {e_nav}")
 
+    # Decodificar matrícula e curso a partir do token Base64 na URL do histórico
+    for u_candidate in [page.url, candidate.get("historico_url", ""), str(candidate.get("action_urls", [""]))]:
+        if "/historico/" in str(u_candidate):
+            try:
+                import base64, json
+                b64_part = str(u_candidate).split("/historico/")[-1].split("?")[0].split("/")[0].strip()
+                if b64_part and len(b64_part) > 10:
+                    b64_padded = b64_part + '=' * (-len(b64_part) % 4)
+                    dec_json = json.loads(base64.b64decode(b64_padded).decode('utf-8', errors='ignore'))
+                    if "alu_matricula" in dec_json and str(dec_json["alu_matricula"]).strip():
+                        aluno_info['ra'] = str(dec_json["alu_matricula"]).strip()
+                        aluno_info['matricula'] = str(dec_json["alu_matricula"]).strip()
+                    if "ano_ingre" in dec_json and not aluno_info.get('ingresso'):
+                        aluno_info['ingresso'] = str(dec_json["ano_ingre"]).strip()
+            except Exception:
+                pass
+
     try:
-        # 1. Extrair dados da seção "Dados da Banca" diretamente do HTML da página do aluno
+        # 1. Extrair dados da página do discente diretamente do HTML
         try:
             html_text = page.locator("body").inner_text()
             
+            # Extrair Matrícula diretamente do texto visível na página (ex: "Matrícula: 140076")
+            mat_html = re.search(r"Matr[ií]cula[\s:\ºn]*([\d]{4,10})", html_text, re.I)
+            if mat_html:
+                aluno_info['ra'] = mat_html.group(1).strip()
+                aluno_info['matricula'] = mat_html.group(1).strip()
+            else:
+                try:
+                    raw_html = page.content()
+                    mat_raw = re.search(r"Matr[ií]cula[\s\S]{1,50}?([\d]{4,10})", raw_html, re.I)
+                    if mat_raw:
+                        aluno_info['ra'] = mat_raw.group(1).strip()
+                        aluno_info['matricula'] = mat_raw.group(1).strip()
+                except Exception:
+                    pass
+
             tese_html = re.search(r"(?:Título\s*da\s*Tese|Título\s*da\s*Dissertação)[\s:]*(.*?)(?=\n|Ano:|Orientador|Membros|Situação)", html_text, re.I)
             if tese_html and tese_html.group(1).strip():
                 aluno_info['titulo_tese'] = tese_html.group(1).strip()
