@@ -190,15 +190,29 @@ def _run_with_playwright_page(login, senha, task_fn):
     os.makedirs(download_dir, exist_ok=True)
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=False,
-            args=[
+        local_chrome = None
+        for cand_path in [
+            os.path.join(os.getcwd(), "chromium", "chromium-1228", "chrome-win64", "chrome.exe"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chromium", "chromium-1228", "chrome-win64", "chrome.exe"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "chromium", "chromium-1228", "chrome-win64", "chrome.exe"),
+        ]:
+            if os.path.exists(cand_path):
+                local_chrome = cand_path
+                break
+
+        launch_kwargs = {
+            "headless": False,
+            "args": [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--no-first-run"
             ]
-        )
+        }
+        if local_chrome:
+            launch_kwargs["executable_path"] = local_chrome
+
+        browser = p.chromium.launch(**launch_kwargs)
         context = browser.new_context(
             accept_downloads=True,
             ignore_https_errors=True,
