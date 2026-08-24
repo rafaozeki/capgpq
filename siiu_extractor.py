@@ -652,6 +652,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
 
+    valid_hist_pdf = pdf_historico_path if (pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100) else None
     valid_comp_pdf = pdf_comprovante_path if (pdf_comprovante_path and os.path.exists(pdf_comprovante_path) and os.path.getsize(pdf_comprovante_path) > 100) else None
 
     return {
@@ -659,8 +660,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         "aluno_info": aluno_info,
         "pdf_historico": valid_hist_pdf,
         "pdf_comprovante": valid_comp_pdf,
-        "historico": aluno_info.get("historico", []),
-        "debug_pdf": debug_pdf
+        "historico": aluno_info.get("historico", [])
     }
 
 def search_student_candidates(login, senha, query, programa, cached_driver=None, fallback_name=None):
