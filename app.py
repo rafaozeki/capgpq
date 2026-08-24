@@ -565,7 +565,7 @@ def show_control_panel(config):
 
     st.write("🔍 **Filtros Globais de Busca e Execução**")
 
-    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+    f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
 
     with f_col1:
         filtro_modulo = st.selectbox(
@@ -574,21 +574,27 @@ def show_control_panel(config):
         )
 
     with f_col2:
-        filtro_selecao = st.selectbox(
-            "2. Período de Solicitação:",
-            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
+        filtro_status = st.selectbox(
+            "2. Status da Atividade:",
+            ["Todas as Atividades", "⏳ Atividade pendente", "✅ Atividade concluída"]
         )
 
     with f_col3:
+        filtro_selecao = st.selectbox(
+            "3. Período de Solicitação:",
+            ["Todas as Atividades", "Últimos 7 dias", "Apenas Hoje", "Mês Atual", "Últimos 6 meses", "Escolher Período Customizado"]
+        )
+
+    with f_col4:
         filtro_tipo_solic = st.text_input(
-            "3. Tipo de Solicitação (Palavra-chave):",
+            "4. Tipo de Solicitação (Palavra-chave):",
             value="",
             placeholder="Ex: Passe, Diploma, SEI..."
         )
 
-    with f_col4:
+    with f_col5:
         filtro_execucao = st.selectbox(
-            "4. Data para Execução / Urgência:",
+            "5. Data para Execução / Urgência:",
             ["Todas as Datas de Execução", "🚨 Urgentes (Próximas / Expiradas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"]
         )
 
@@ -642,6 +648,16 @@ def show_control_panel(config):
                         header = data[0]
                         rows = data[1:]
 
+                        col_dt_exec_idx = None
+                        import unicodedata
+                        for idx_h, col_h in enumerate(header):
+                            c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
+                            if "data" in c_norm and "execucao" in c_norm:
+                                col_dt_exec_idx = idx_h
+                                break
+                        if col_dt_exec_idx is None and len(header) > 39:
+                            col_dt_exec_idx = 39
+
                         for reversed_idx, row in enumerate(reversed(rows)):
                             idx_real = len(rows) - reversed_idx + 1
                             row_padded = row + [''] * (len(header) - len(row))
@@ -666,6 +682,9 @@ def show_control_panel(config):
                                     data_exec_val = str(v).strip()
                                     data_exec_parsed = parse_date_br(data_exec_val)
 
+                            val_dt_exec_efetiva = row_padded[col_dt_exec_idx].strip() if (col_dt_exec_idx is not None and col_dt_exec_idx < len(row_padded)) else ""
+                            is_concluida = bool(val_dt_exec_efetiva)
+
                             all_activities.append({
                                 "sheet_id": sheet_id,
                                 "modulo_nome": modulo_nome,
@@ -681,7 +700,9 @@ def show_control_panel(config):
                                 "card_items": card_items,
                                 "tipo_solic": tipo_solic_val,
                                 "data_exec_val": data_exec_val,
-                                "data_exec_parsed": data_exec_parsed
+                                "data_exec_parsed": data_exec_parsed,
+                                "val_dt_exec_efetiva": val_dt_exec_efetiva,
+                                "is_concluida": is_concluida
                             })
                     except Exception as e_load:
                         st.warning(f"Não foi possível carregar os dados do módulo '{modulo_nome}': {e_load}")
@@ -723,7 +744,15 @@ def show_control_panel(config):
                 if item["modulo_nome"] != filtro_modulo:
                     continue
 
-            # B. Filtro por Período de Solicitação
+            # B. Filtro por Status da Atividade (Atividade concluída / Atividade pendente)
+            if filtro_status == "⏳ Atividade pendente":
+                if item["is_concluida"]:
+                    continue
+            elif filtro_status == "✅ Atividade concluída":
+                if not item["is_concluida"]:
+                    continue
+
+            # C. Filtro por Período de Solicitação
             if filtro_selecao != "Todas as Atividades":
                 d_l = item["data_linha"]
                 if d_l and data_inicio_solic and data_fim_solic:
@@ -733,12 +762,12 @@ def show_control_panel(config):
                 elif not d_l:
                     continue
 
-            # C. Filtro por Tipo de Solicitação
+            # D. Filtro por Tipo de Solicitação
             if filtro_tipo_solic.strip():
                 if filtro_tipo_solic.strip().lower() not in item["tipo_solic"].strip().lower():
                     continue
 
-            # D. Filtro por Data para Execução / Urgência
+            # E. Filtro por Data para Execução / Urgência
             d_ex = item["data_exec_parsed"]
             if filtro_execucao == "🚨 Urgentes (Próximas / Expiradas <= 7 dias)":
                 if not d_ex or (d_ex - hoje).days > 7:
@@ -759,21 +788,25 @@ def show_control_panel(config):
 
         # Painel Executivo Consolidado
         st.write("### 📈 Métricas de Execução do Painel de Controle")
-        col_rep1, col_rep2, col_rep3, col_rep4 = st.columns(4)
+        col_rep1, col_rep2, col_rep3, col_rep4, col_rep5 = st.columns(5)
         with col_rep1:
             st.metric("Total de Atividades", f"{len(filtered_activities)} registro(s)")
+            
+        concluidas_count = sum(1 for it in filtered_activities if it["is_concluida"])
+        with col_rep2:
+            st.metric("Concluídas", f"{concluidas_count} demanda(s)")
+
+        pendentes_count = sum(1 for it in filtered_activities if not it["is_concluida"])
+        with col_rep3:
+            st.metric("Pendentes", f"{pendentes_count} demanda(s)")
 
         vencidas_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
-        with col_rep2:
-            st.metric("Expiradas", f"{vencidas_count} atividade(s)")
+        with col_rep4:
+            st.metric("Expiradas", f"{vencidas_count} demanda(s)")
 
         urgentes_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and 0 <= (it["data_exec_parsed"] - hoje).days <= 7)
-        with col_rep3:
-            st.metric("A Vencer (0 a 7 dias)", f"{urgentes_count} atividade(s)")
-
-        medio_count = sum(1 for it in filtered_activities if it["data_exec_parsed"] and 8 <= (it["data_exec_parsed"] - hoje).days <= 30)
-        with col_rep4:
-            st.metric("Médio Prazo (8 a 30 dias)", f"{medio_count} atividade(s)")
+        with col_rep5:
+            st.metric("A Vencer (0 a 7 dias)", f"{urgentes_count} demanda(s)")
 
         st.divider()
 
@@ -1933,7 +1966,7 @@ def show_demand_page(sheet_id, info):
 
     st.write("🔍 **Filtros Avançados de Busca e Período**")
     
-    f_col1, f_col2, f_col3 = st.columns(3)
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
     with f_col1:
         filtro_selecao = st.selectbox(
             "1. Período de Solicitação:", 
@@ -1942,16 +1975,23 @@ def show_demand_page(sheet_id, info):
         )
         
     with f_col2:
+        filtro_status = st.selectbox(
+            "2. Status da Atividade:",
+            ["Todas as Atividades", "⏳ Atividade pendente", "✅ Atividade concluída"],
+            key=f"sel_st_{sheet_id}"
+        )
+        
+    with f_col3:
         filtro_tipo_solic_str = st.text_input(
-            "2. Tipo de Solicitação (Palavra-chave):",
+            "3. Tipo de Solicitação (Palavra-chave):",
             value="",
             placeholder="Digite para filtrar...",
             key=f"inp_tp_{sheet_id}"
         )
         
-    with f_col3:
+    with f_col4:
         filtro_execucao = st.selectbox(
-            "3. Data para Execução / Urgência:",
+            "4. Data para Execução / Urgência:",
             ["Todas as Datas de Execução", "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)", "⚠️ Médio Prazo (8 a 30 dias)", "Escolher Período de Execução"],
             key=f"sel_exe_{sheet_id}"
         )
@@ -2015,6 +2055,20 @@ def show_demand_page(sheet_id, info):
         all_tipos_solicitacao = set()
         rows_parsed = []
         
+        # Identificar coluna 'DATA DA EXECUÇÃO' e 'POLARE / EXECUTANTE'
+        col_dt_exec_idx = None
+        col_exec_idx = None
+        import unicodedata
+        for idx_h, col_h in enumerate(header):
+            c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
+            if "data" in c_norm and "execucao" in c_norm:
+                col_dt_exec_idx = idx_h
+            elif "polare" in c_norm or "executante" in c_norm:
+                col_exec_idx = idx_h
+                
+        if col_dt_exec_idx is None and len(header) > 39:
+            col_dt_exec_idx = 39
+
         for reversed_idx, row in enumerate(reversed(rows)):
             idx_real = len(rows) - reversed_idx + 1
             row_padded = row + [''] * (len(header) - len(row))
@@ -2035,6 +2089,10 @@ def show_demand_page(sheet_id, info):
                     data_exec_val = str(v).strip()
                     data_exec_parsed = parse_date_br(data_exec_val)
                     
+            val_dt_exec_efetiva = row_padded[col_dt_exec_idx].strip() if (col_dt_exec_idx is not None and col_dt_exec_idx < len(row_padded)) else ""
+            val_exec_efetivo = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
+            is_concluida = bool(val_dt_exec_efetiva)
+
             rows_parsed.append({
                 "idx_real": idx_real,
                 "row_padded": row_padded,
@@ -2043,7 +2101,10 @@ def show_demand_page(sheet_id, info):
                 "rel_data": rel_data,
                 "tipo_solic": tipo_solic_val,
                 "data_exec_val": data_exec_val,
-                "data_exec_parsed": data_exec_parsed
+                "data_exec_parsed": data_exec_parsed,
+                "val_dt_exec_efetiva": val_dt_exec_efetiva,
+                "val_exec_efetivo": val_exec_efetivo,
+                "is_concluida": is_concluida
             })
 
         # Filtragem Simultânea das Demandas
@@ -2059,12 +2120,20 @@ def show_demand_page(sheet_id, info):
                 elif not d_l:
                     continue
 
-            # B. Filtro por Tipo de Solicitação
+            # B. Filtro por Status da Atividade (Atividade concluída / Atividade pendente)
+            if filtro_status == "⏳ Atividade pendente":
+                if item["is_concluida"]:
+                    continue
+            elif filtro_status == "✅ Atividade concluída":
+                if not item["is_concluida"]:
+                    continue
+
+            # C. Filtro por Tipo de Solicitação
             if filtro_tipo_solic_str.strip():
                 if filtro_tipo_solic_str.strip().lower() not in item["tipo_solic"].strip().lower():
                     continue
 
-            # C. Filtro por Data para Execução / Urgência
+            # D. Filtro por Data para Execução / Urgência
             d_ex = item["data_exec_parsed"]
             if filtro_execucao == "🚨 Urgentes (Próximas de vencer / Vencidas <= 7 dias)":
                 if not d_ex:
@@ -2092,21 +2161,25 @@ def show_demand_page(sheet_id, info):
             st.write("### 📈 Painel Executivo e Previsão de Demandas")
             st.caption("Gere um relatório abrangente contendo todas as informações da planilha no período e tipo selecionados.")
             
-            col_rep1, col_rep2, col_rep3, col_rep4 = st.columns(4)
+            col_rep1, col_rep2, col_rep3, col_rep4, col_rep5 = st.columns(5)
             with col_rep1:
                 st.metric("Total de Demandas", f"{len(filtered_items)} registro(s)")
                 
-            vencidas_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
+            concluidas_count = sum(1 for it in filtered_items if it["is_concluida"])
             with col_rep2:
+                st.metric("Concluídas", f"{concluidas_count} demanda(s)")
+
+            pendentes_count = sum(1 for it in filtered_items if not it["is_concluida"])
+            with col_rep3:
+                st.metric("Pendentes", f"{pendentes_count} demanda(s)")
+
+            vencidas_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and (it["data_exec_parsed"] - hoje).days < 0)
+            with col_rep4:
                 st.metric("Expiradas", f"{vencidas_count} demanda(s)")
 
             urgentes_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 0 <= (it["data_exec_parsed"] - hoje).days <= 7)
-            with col_rep3:
+            with col_rep5:
                 st.metric("A Vencer (0 a 7 dias)", f"{urgentes_count} demanda(s)")
-                
-            medio_count = sum(1 for it in filtered_items if it["data_exec_parsed"] and 8 <= (it["data_exec_parsed"] - hoje).days <= 30)
-            with col_rep4:
-                st.metric("Médio Prazo (8 a 30 dias)", f"{medio_count} demanda(s)")
 
             st.divider()
             st.write("#### 📥 Exportar Relatório Completo (Contendo 100% das Informações da Planilha)")

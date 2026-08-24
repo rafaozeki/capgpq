@@ -2,6 +2,18 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.1] — 24/08/2026 (Horário: 12:30)
+
+### 🔍 Filtro de Busca por Status: "Atividade concluída" e "Atividade pendente"
+- **Novo Seletor de Status nos Módulos e Painel de Controle**:
+  - Implementado o filtro de status com as opções: `Todas as Atividades`, `⏳ Atividade pendente` e `✅ Atividade concluída`.
+- **Lógica de Verificação da Coluna "DATA DA EXECUÇÃO"**:
+  - O sistema analisa a coluna `"DATA DA EXECUÇÃO"`. Se preenchida, considera a demanda como **concluída**; se vazia, considera como **pendente**.
+- **Métricas Executivas Aprimoradas**:
+  - Adicionados os cartões de métricas dedicados para **Concluídas** e **Pendentes** nos relatórios do sistema.
+
+---
+
 ## [v1.1.0] — 24/08/2026 (Horário: 12:24)
 
 ### 🟢 Botão "Confirmar cadastro na SPTrans" & Registro de Executante POLARE
