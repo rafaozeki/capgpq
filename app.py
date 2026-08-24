@@ -2348,7 +2348,12 @@ def show_demand_page(sheet_id, info):
                 executante_hdr = just_conf_card.get("executante", "")
 
             status_prefix = f"✅ **CONCLUÍDO ({executante_hdr})** | " if executante_hdr else ""
-            is_card_open = st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}", False)
+            has_siiu_active = bool(
+                st.session_state.get(f"siiu_res_{idx_real_na_planilha}") or 
+                st.session_state.get(f"cands_{idx_real_na_planilha}") or 
+                st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}")
+            )
+            is_card_open = bool(has_siiu_active and not executante_hdr and not just_conf_card)
                 
             with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=is_card_open):
                 relevant_data = extract_relevant_data(row_padded, header)
@@ -2431,6 +2436,7 @@ def show_demand_page(sheet_id, info):
                     col_ac1, col_ac2 = st.columns([3, 2])
                     with col_ac1:
                         if st.button(f"🔍 Conferir com SIIU & Gerar Sequência ({modulo_nome})", key=key_check_btn, type="primary"):
+                            st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                             # Prioridade de busca: 1º Matrícula (RA), 2º CPF, 3º Nome
                             nome_busca = tf['matricula']['val'] or tf['cpf']['val'] or tf['nome']['val']
                             nome_fallback = tf['nome']['val'] if (tf['nome']['val'] and nome_busca != tf['nome']['val']) else ""
@@ -2449,6 +2455,7 @@ def show_demand_page(sheet_id, info):
                                             nome_busca, ppg_busca, 
                                             fallback_name=nome_fallback
                                         )
+                                        st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                         if s_res.get("status") == "error":
                                             st.session_state[state_key_res] = s_res
                                             st.session_state[f"cands_{idx_real_na_planilha}"] = None
@@ -2477,6 +2484,7 @@ def show_demand_page(sheet_id, info):
                                 try:
                                     import siiu_extractor
                                     ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, selected_c_obj, True, True)
+                                    st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                     st.session_state[state_key_res] = ext_res
                                     st.session_state[f"cands_{idx_real_na_planilha}"] = None
                                     st.rerun()
