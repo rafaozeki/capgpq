@@ -2507,10 +2507,14 @@ def show_demand_page(sheet_id, info):
                             ainfo = res_siiu.get("aluno_info", {})
                             st.markdown("#### 📊 Resultado da Conferência (Planilha vs. SIIU)")
 
+                            siiu_ra_val = str(ainfo.get('ra', '') or ainfo.get('matricula', '')).strip()
+                            if siiu_ra_val and (not siiu_ra_val.isdigit() or len(siiu_ra_val) < 4):
+                                siiu_ra_val = ""
+
                             # Definição dos campos a conferir conforme solicitação do usuário
                             if is_sptrans:
                                 check_specs = [
-                                    ("MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                                    ("MATRÍCULA", tf['matricula']['val'], siiu_ra_val, "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
                                     ("TÉRMINO DO CURSO", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
                                     ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
                                     ("RG / Documento", plan_rg_num, siiu_rg_num, "digits", tf['rg']['col_name'], tf['rg']['col_idx']),
@@ -2521,7 +2525,7 @@ def show_demand_page(sheet_id, info):
                                 ]
                             else: # EMTU
                                 check_specs = [
-                                    ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
+                                    ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], siiu_ra_val, "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
                                     ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
                                     ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
                                     ("RG ou RNE", plan_rg_num, siiu_rg_num, "digits", tf['rg']['col_name'], tf['rg']['col_idx']),
