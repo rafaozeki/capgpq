@@ -2353,7 +2353,7 @@ def show_demand_page(sheet_id, info):
                 st.session_state.get(f"cands_{idx_real_na_planilha}") or 
                 st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}")
             )
-            is_card_open = bool(has_siiu_active and not executante_hdr and not just_conf_card)
+            is_card_open = bool(has_siiu_active or st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}", False))
             
             rev_k = st.session_state.get(f"card_rev_{sheet_id}_{idx_real_na_planilha}", 0)
             rev_spaces = "\u200b" * (rev_k % 20)
@@ -2767,14 +2767,22 @@ def show_demand_page(sheet_id, info):
                                     st.cache_data.clear()
                                 except Exception:
                                     pass
-                                st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = False
+                                st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                 st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
-                                st.session_state[state_key_res] = None
-                                st.session_state[f"cands_{idx_real_na_planilha}"] = None
                                 st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
                                 st.rerun()
                             except Exception as e_conf:
                                 st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
+
+                    # Botão manual para recolher o card
+                    st.write("")
+                    btn_rec_k = f"btn_recolher_{sheet_id}_{idx_real_na_planilha}"
+                    if st.button("🔼 Recolher card", key=btn_rec_k, use_container_width=True):
+                        st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = False
+                        st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
+                        st.session_state[state_key_res] = None
+                        st.session_state[f"cands_{idx_real_na_planilha}"] = None
+                        st.rerun()
 
         if count == 0:
             st.info("Nenhuma atividade encontrada para o filtro selecionado.")
