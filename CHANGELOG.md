@@ -2,6 +2,22 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.2.0] — 24/08/2026 (Horário: 19:43) 🛡️ [CHECKPOINT ESTÁVEL]
+
+### 🎯 Consolidação Completa de Extração do SIIU, Validações e Persistência de Interface
+- **Extração Híbrida Direta da Tela do SIIU e URL Base64**:
+  - Implementada a captura direta de **Matrícula** (`140076`, `63425`), **Nome**, **Curso**, **Ano de Ingresso / Situação** e **Período / Término Previsto** a partir do texto estruturado da página do discente e do parâmetro Base64 na URL (`/historico/...`).
+  - Proteção estrita contra colisões de numeração de tabela (`# / 01`) e eliminação de leituras residuais espúrias.
+- **Motor de Leitura de Histórico em PDF (`pdfplumber` + `pypdf`)**:
+  - Download limpo de arquivos físicos com sessão autenticada (`page.context.request`), abertura de abas visíveis no Chromium com tempo de sincronização e parsing resiliente de CPF com 11 dígitos, RG/RNE e Órgão/UF Emissor.
+- **Persistência Inteligente da Moldura (Card Expander)**:
+  - O card expansível do discente permanece aberto durante toda a navegação, conferência, seleção de vínculos múltiplos e clique nos botões **`✏️ Atualizar Planilha com '...'`** ou **`💾 Inserir na planilha`**.
+  - O recolhimento automático da moldura ocorre estritamente no clique de **`✅ Confirmar cadastro na EMTU`** ou **`✅ Confirmar cadastro na SPTrans`**.
+- **Filtros Sincronizados de Pendentes e Concluídos**:
+  - Filtro por status (`⏳ Atividade pendente` vs. `✅ Atividade concluída`) 100% consistente em todos os módulos, com gravação de data sem horário (`DD/MM/YYYY`) e registro do usuário POLARE.
+
+---
+
 ## [v1.1.6] — 24/08/2026 (Horário: 18:13)
 
 ### 📝 Campo Observações de Cadastro & Confirmação com Apenas Data e Recolhimento de Moldura
