@@ -2354,8 +2354,11 @@ def show_demand_page(sheet_id, info):
                 st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}")
             )
             is_card_open = bool(has_siiu_active and not executante_hdr and not just_conf_card)
+            
+            rev_k = st.session_state.get(f"card_rev_{sheet_id}_{idx_real_na_planilha}", 0)
+            rev_spaces = "\u200b" * (rev_k % 20)
                 
-            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=is_card_open):
+            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}{rev_spaces}", expanded=is_card_open):
                 relevant_data = extract_relevant_data(row_padded, header)
                 card_items = sort_and_format_card_data(relevant_data)
                 
@@ -2389,6 +2392,7 @@ def show_demand_page(sheet_id, info):
                                                         coluna_index = header.index(orig_key)
                                                         update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, coluna_index, novo_valor)
                                                         st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                                                        st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                                                         st.success("Salvo com sucesso! A página irá recarregar.")
                                                         st.rerun()
                                                     except Exception as err:
@@ -2437,6 +2441,7 @@ def show_demand_page(sheet_id, info):
                     with col_ac1:
                         if st.button(f"🔍 Conferir com SIIU & Gerar Sequência ({modulo_nome})", key=key_check_btn, type="primary"):
                             st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                            st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                             # Prioridade de busca: 1º Matrícula (RA), 2º CPF, 3º Nome
                             nome_busca = tf['matricula']['val'] or tf['cpf']['val'] or tf['nome']['val']
                             nome_fallback = tf['nome']['val'] if (tf['nome']['val'] and nome_busca != tf['nome']['val']) else ""
@@ -2456,6 +2461,7 @@ def show_demand_page(sheet_id, info):
                                             fallback_name=nome_fallback
                                         )
                                         st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                                        st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                                         if s_res.get("status") == "error":
                                             st.session_state[state_key_res] = s_res
                                             st.session_state[f"cands_{idx_real_na_planilha}"] = None
@@ -2485,6 +2491,7 @@ def show_demand_page(sheet_id, info):
                                     import siiu_extractor
                                     ext_res = siiu_extractor.extract_candidate_details(login_siiu, senha_siiu, selected_c_obj, True, True)
                                     st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                                    st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                                     st.session_state[state_key_res] = ext_res
                                     st.session_state[f"cands_{idx_real_na_planilha}"] = None
                                     st.rerun()
@@ -2578,6 +2585,7 @@ def show_demand_page(sheet_id, info):
                                                 except Exception:
                                                     pass
                                                 st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                                                st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                                                 st.success("Planilha atualizada com sucesso! Recarregando...")
                                                 st.rerun()
                                             except Exception as e_upd:
@@ -2653,6 +2661,7 @@ def show_demand_page(sheet_id, info):
                                         except Exception:
                                             pass
                                         st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
+                                        st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
                                         st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
                                         st.rerun()
                                 except Exception as e_obs:
@@ -2759,6 +2768,9 @@ def show_demand_page(sheet_id, info):
                                 except Exception:
                                     pass
                                 st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = False
+                                st.session_state[f"card_rev_{sheet_id}_{idx_real_na_planilha}"] = rev_k + 1
+                                st.session_state[state_key_res] = None
+                                st.session_state[f"cands_{idx_real_na_planilha}"] = None
                                 st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
                                 st.rerun()
                             except Exception as e_conf:
