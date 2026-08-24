@@ -1,11 +1,9 @@
-import time
 import os
-import glob
 import re
-import traceback
-import sys
 import gc
-import pandas as pd
+import json
+import time
+from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 try:
@@ -13,34 +11,20 @@ try:
 except ImportError:
     pdfplumber = None
 
-PPG_MAPPING_SIIU = {
-    "CIENCIAS SOCIAIS": "CIÊNCIAS SOCIAIS",
-    "EDUCACAO": "EDUCAÇÃO",
-    "EDUCACAO E SAUDE": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
-    "EDUCACAO E SAUDE NA INFANCIA E NA ADOLESCENCIA": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
-    "EDUCACAO E SAUDE NA INFANCIA E ADOLESCENCIA": "EDUCAÇÃO E SAÚDE NA INFÂNCIA E ADOLESCÊNCIA",
-    "FILOSOFIA": "FILOSOFIA",
-    "HISTORIA": "HISTÓRIA",
-    "HISTORIA DA ARTE": "HISTÓRIA DA ARTE",
-    "LETRAS": "LETRAS",
-    "PROFHISTORIA - MESTRADO PROFISSIONAL": "ENSINO DE HISTÓRIA",
-    "PROFHISTORIA - DOUTORADO PROFISSIONAL": "ENSINO DE HISTÓRIA",
-    "PROFHISTORIA": "ENSINO DE HISTÓRIA",
-    "ENSINO DE HISTORIA": "ENSINO DE HISTÓRIA",
-    "POS-DOUTORADO": "ESCOLA DE FILOSOFIA, LETRAS E CIÊNCIAS HUMANAS"
-}
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 
 def close_sweetalert_overlays(page):
-    """Fecha modais e sobreposições do SweetAlert (swal-overlay) que cobrem os botões do SIIU."""
+    """Fecha modais ou backdrops do SweetAlert / Bootstrap que possam bloquear a tela."""
     try:
-        page.evaluate("""
-            try {
-                if (typeof swal !== 'undefined' && swal.close) swal.close();
-                if (typeof Swal !== 'undefined' && Swal.close) Swal.close();
-                const overlays = document.querySelectorAll('.swal-overlay, .swal2-container');
-                overlays.forEach(el => el.remove());
-            } catch(e) {}
-        """)
+        page.evaluate("""() => {
+            const swal = document.querySelector('.swal2-container, .sweet-alert, .modal-backdrop');
+            if (swal) { swal.remove(); }
+            const confirmBtn = document.querySelector('.swal2-confirm, .confirm');
+            if (confirmBtn) { confirmBtn.click(); }
+        }""")
     except Exception:
         pass
 
@@ -143,81 +127,62 @@ def parse_text_data(texto_full):
     lines = texto_norm.split("\n")
     in_uc = False
     for line in lines:
-        if "Unidade Curricular" in line and "Ano" in line:
+        l_str = line.strip()
+        if "Unidade Curricular" in l_str or "DISCIPLINAS CURSADAS" in l_str:
             in_uc = True
             continue
-        if in_uc:
-            if "Total de créditos" in line or "Legenda:" in line:
-                in_uc = False
-                break
-            m_uc = re.search(r"^(.*?)\s+([\d]{4})\s+([\d]{1,3})\s+([A-D])\s+([\d]+)$", line.strip())
-            if m_uc:
+        if "Total de créditos" in l_str or "Créditos necessários" in l_str:
+            in_uc = False
+            
+        if in_uc and l_str:
+            parts = [p.strip() for p in l_str.split("  ") if p.strip()]
+            if len(parts) >= 4:
                 hist_disciplinas.append({
-                    "Unidade Curricular": m_uc.group(1).strip(),
-                    "Ano": m_uc.group(2).strip(),
-                    "Frequência (%)": m_uc.group(3).strip(),
-                    "Conceito": m_uc.group(4).strip(),
-                    "Créditos": m_uc.group(5).strip()
+                    "codigo": parts[0],
+                    "disciplina": parts[1],
+                    "creditos": parts[2],
+                    "conceito": parts[3] if len(parts) > 3 else "",
+                    "ano_periodo": parts[4] if len(parts) > 4 else ""
                 })
     if hist_disciplinas:
-        info["historico"] = hist_disciplinas
-        
+        info['historico'] = hist_disciplinas
+
     return info
 
 def parse_pdf_data(pdf_path):
-    info = {}
-    if not pdf_path or not os.path.exists(pdf_path):
-        return info
-        
-    raw_texts = []
-    
-    # 1. Extração via pdfplumber (layout=False, layout=True e tabelas)
+    """Lê um arquivo PDF físico do disco usando pdfplumber e pypdf como fallback."""
+    if not pdf_path or not os.path.exists(pdf_path) or os.path.getsize(pdf_path) < 10:
+        return {}
+
+    full_text = ""
     if pdfplumber:
         try:
             with pdfplumber.open(pdf_path) as pdf:
-                for p in pdf.pages:
-                    t1 = p.extract_text(layout=False)
-                    if t1: raw_texts.append(t1)
-                    t2 = p.extract_text(layout=True)
-                    if t2: raw_texts.append(t2)
-                    
-                    try:
-                        tables = p.extract_tables()
-                        for tbl in tables:
-                            for r in tbl:
-                                if r:
-                                    raw_texts.append(" | ".join(str(c).strip() for c in r if c))
-                    except Exception:
-                        pass
-        except Exception as e:
-            print(f"Erro no pdfplumber: {e}")
-            
-    # 2. Fallback via pypdf
-    try:
-        import pypdf
-        reader = pypdf.PdfReader(pdf_path)
-        for p in reader.pages:
-            t = p.extract_text()
-            if t: raw_texts.append(t)
-    except Exception:
-        pass
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t: full_text += t + "\n"
+        except Exception:
+            pass
 
-    texto_full = "\n".join(raw_texts)
-    return parse_text_data(texto_full)
+    if not full_text.strip() and pypdf:
+        try:
+            reader = pypdf.PdfReader(pdf_path)
+            for page in reader.pages:
+                t = page.extract_text()
+                if t: full_text += t + "\n"
+        except Exception:
+            pass
 
-def init_cached_driver(login, senha):
-    """Mantém a assinatura compatível para o app.py."""
-    return True, None
+    return parse_text_data(full_text)
 
 def _run_with_playwright_page(login, senha, task_fn):
-    """Executa a task_fn(page) em um contexto do Playwright com suporte a PDF e janelas do Chrome."""
+    """Gerencia a sessão completa do Chromium (com interface/janela e download oficial habilitado)."""
     download_dir = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_dir, exist_ok=True)
     
     with sync_playwright() as p:
-        # Abrir o navegador Chromium 100% invisível (headless=True) sem janelas no Windows
         browser = p.chromium.launch(
-            headless=True,
+            headless=False,
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -283,26 +248,17 @@ def _search_page_logic(page, query, programa, fallback_name=None):
         if txt and "SELECIONE" not in txt_norm and val not in ("0", ""):
             valid_options.append((txt, val, txt_norm))
 
-    prog_raw = (programa or "").strip()
-    p_norm = norm(prog_raw)
-    
     selected_option = None
-    if p_norm and p_norm not in ("TODOS", "TODOS OS PROGRAMAS"):
-        mapped_target = PPG_MAPPING_SIIU.get(p_norm)
-        if not mapped_target:
-            for k, v in PPG_MAPPING_SIIU.items():
-                if k in p_norm or p_norm in k:
-                    mapped_target = v
-                    break
-        target = norm(mapped_target or prog_raw)
-        
-        # Pass 1: Igualdade exata de nome de PPG
+    target = norm(programa) if programa else ""
+
+    if target and target != "TODOS OS PROGRAMAS":
+        # Pass 1: Correspondência exata normalizada
         for txt, val, txt_norm in valid_options:
-            if txt_norm == target:
+            if txt_norm == target or txt_norm == f"PROGRAMA DE POS-GRADUACAO EM {target}":
                 selected_option = (txt, val)
                 break
                 
-        # Pass 2: Palavra isolada exata (ex: "LETRAS" em "PROGRAMA DE POS-GRADUACAO EM LETRAS", ignorando unidade guarda-chuva)
+        # Pass 2: Palavra isolada exata
         if not selected_option:
             for txt, val, txt_norm in valid_options:
                 if re.search(r'\b' + re.escape(target) + r'\b', txt_norm) and "ESCOLA DE FILOSOFIA" not in txt_norm:
@@ -414,7 +370,7 @@ def _search_page_logic(page, query, programa, fallback_name=None):
                 })
         return found_cands
 
-    # Se um PPG específico foi solicitado pelo usuário, buscar EXCLUSIVAMENTE nele
+    # Se um PPG específico foi solicitado pelo usuário, buscar nele
     if selected_option:
         cands = do_search_in_option(selected_option, query)
         if cands:
@@ -450,7 +406,7 @@ def _search_page_logic(page, query, programa, fallback_name=None):
     }
 
 def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
-    """Lógica interna de extração de detalhes navegando e baixando o PDF do Histórico."""
+    """Lógica interna de extração navegando até o discente, baixando o PDF e lendo os dados."""
     aluno_info = {
         "matricula": candidate.get("matricula", ""),
         "ra": candidate.get("matricula", ""),
@@ -467,7 +423,7 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     download_dir = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_dir, exist_ok=True)
 
-    # Se a página já não estiver na tela de detalhes do aluno, tentar navegar para target_url
+    # Navegar para a URL da página do discente se não estiver nela
     if "portal-secretaria/discentes/" not in page.url or page.url.endswith("/discentes"):
         target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
         if target_url and target_url != "#":
@@ -549,46 +505,31 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             if h_cand and not h_cand.startswith("#"):
                 pdf_imprimir_url = h_cand if h_cand.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{h_cand if h_cand.startswith('/') else '/' + h_cand}"
 
-        # 2. Baixar o PDF usando page.request autenticado com cookies da sessão
+        # 2. Baixar o Histórico Acadêmico via clique com expect_download do Chrome
         try:
-            resp_req = page.request.get(pdf_imprimir_url, timeout=15000)
-            if resp_req.ok:
-                resp_bytes = resp_req.body()
-                if len(resp_bytes) > 100:
-                    with open(pdf_historico_path, "wb") as f_pdf:
-                        f_pdf.write(resp_bytes)
-        except Exception as e_req:
-            print(f"Aviso page.request histórico: {e_req}")
+            close_sweetalert_overlays(page)
+            if imprimir_btn.count() > 0:
+                try:
+                    with page.expect_download(timeout=12000) as dl_info:
+                        imprimir_btn.click(force=True)
+                    dl = dl_info.value
+                    dl.save_as(pdf_historico_path)
+                except Exception as e_dl:
+                    print(f"Aviso expect_download histórico: {e_dl}")
+        except Exception as e_cl:
+            print(f"Aviso clique histórico: {e_cl}")
 
-        # 3. Fallback: Se não baixou via request, tentar expect_download ou expect_popup ao clicar
+        # 3. Baixar via page.request se o arquivo físico não foi baixado
         if not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) < 100:
             try:
-                close_sweetalert_overlays(page)
-                if imprimir_btn.count() > 0:
-                    try:
-                        with page.expect_download(timeout=8000) as dl_info:
-                            imprimir_btn.click(force=True)
-                        dl = dl_info.value
-                        dl.save_as(pdf_historico_path)
-                    except Exception:
-                        # Tentar capturar popup aberta por target=_blank
-                        try:
-                            with page.expect_popup(timeout=5000) as pop_info:
-                                imprimir_btn.click(force=True)
-                            popup = pop_info.value
-                            popup.wait_for_load_state("domcontentloaded")
-                            pop_url = popup.url
-                            r_pop = page.request.get(pop_url)
-                            if r_pop.ok and len(r_pop.body()) > 100:
-                                with open(pdf_historico_path, "wb") as f_p:
-                                    f_p.write(r_pop.body())
-                            popup.close()
-                        except Exception:
-                            pass
-            except Exception as e_cl:
-                print(f"Aviso clique histórico: {e_cl}")
+                resp_req = page.request.get(pdf_imprimir_url, timeout=15000)
+                if resp_req.ok and len(resp_req.body()) > 100:
+                    with open(pdf_historico_path, "wb") as f_pdf:
+                        f_pdf.write(resp_req.body())
+            except Exception as e_req:
+                print(f"Aviso page.request histórico: {e_req}")
 
-        # 4. Fallback JS Fetch interno no Chromium
+        # 4. Baixar via JS Fetch interno no Chromium como fallback
         if not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) < 100:
             try:
                 pdf_b64 = page.evaluate("""async (url) => {
@@ -614,18 +555,43 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         # 5. Baixar o Comprovante de Matrícula se solicitado
         if baixar_comprovante:
             try:
-                r_comp = page.request.get(pdf_comprovante_url, timeout=10000)
-                if r_comp.ok and len(r_comp.body()) > 100:
-                    with open(pdf_comprovante_path, "wb") as f_c:
-                        f_c.write(r_comp.body())
+                close_sweetalert_overlays(page)
+                comp_btn = page.locator("a[href*='comprovante-matricula'], a:has-text('Comprovante')").first
+                if comp_btn.count() > 0:
+                    try:
+                        with page.expect_download(timeout=8000) as dl_c_info:
+                            comp_btn.click(force=True)
+                        dl_c = dl_c_info.value
+                        dl_c.save_as(pdf_comprovante_path)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
-        # 6. LER O ARQUIVO SALVO (PDF ou HTML) E EXTRAIR OS DADOS
+            if not os.path.exists(pdf_comprovante_path) or os.path.getsize(pdf_comprovante_path) < 100:
+                try:
+                    r_comp = page.request.get(pdf_comprovante_url, timeout=10000)
+                    if r_comp.ok and len(r_comp.body()) > 100:
+                        with open(pdf_comprovante_path, "wb") as f_c:
+                            f_c.write(r_comp.body())
+                except Exception:
+                    pass
+
+        # 6. Abrir as abas visíveis no Chrome para o usuário visualizar e pausar 2 segundos
+        try:
+            close_sweetalert_overlays(page)
+            if baixar_comprovante:
+                page.evaluate(f"window.open('{pdf_comprovante_url}', '_blank');")
+            if baixar_historico:
+                page.evaluate(f"window.open('{pdf_imprimir_url}', '_blank');")
+            page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        # 7. LER O ARQUIVO SALVO (PDF ou HTML) E EXTRAIR OS DADOS
         if os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 50:
             parsed = parse_pdf_data(pdf_historico_path)
             if not parsed or not parsed.get('cpf'):
-                # Se parse_pdf_data não extraiu (por exemplo, se o retorno foi HTML), ler como texto
                 try:
                     with open(pdf_historico_path, "r", encoding="utf-8", errors="ignore") as f_txt:
                         raw_txt_content = f_txt.read()
@@ -669,87 +635,8 @@ def search_student_candidates(login, senha, query, programa, cached_driver=None,
         return _search_page_logic(page, query, programa, fallback_name)
     return _run_with_playwright_page(login, senha, _task)
 
-def extract_candidate_details_direct(login, senha, candidate, baixar_historico=True, baixar_comprovante=True):
-    """Extrai detalhes e PDF do candidato no SIIU via requisição HTTP direta sem abrir navegador."""
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-        
-        session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        })
-        
-        login_url = "https://notas-propgpq.siiu.unifesp.br/login"
-        res_login_page = session.get(login_url, timeout=8)
-        
-        csrf_token = None
-        soup = BeautifulSoup(res_login_page.text, "html.parser")
-        token_input = soup.find("input", {"name": "_token"}) or soup.find("meta", {"name": "csrf-token"})
-        if token_input:
-            csrf_token = token_input.get("value") or token_input.get("content")
-            
-        payload = {"username": login, "password": senha}
-        if csrf_token:
-            payload["_token"] = csrf_token
-            
-        res_post = session.post(login_url, data=payload, timeout=8, allow_redirects=True)
-        if "incorreto" in res_post.text.lower() or "credencial" in res_post.text.lower():
-            return {"status": "error", "message": "Usuário e/ou senha do SIIU incorretos."}
-            
-        target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
-        if not target_url or target_url == "#":
-            return {"status": "fallback"}
-            
-        full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
-        
-        res_cand = session.get(full_url, timeout=8)
-        if res_cand.status_code != 200:
-            return {"status": "fallback"}
-            
-        aluno_info = {
-            "matricula": candidate.get("matricula", ""),
-            "ra": candidate.get("matricula", ""),
-            "nome": candidate.get("nome", ""),
-            "curso": candidate.get("curso", ""),
-            "ingresso": candidate.get("ingresso", ""),
-            "nivel": candidate.get("nivel", ""),
-            "situacao": candidate.get("situacao", "")
-        }
-        
-        # Baixar o PDF do histórico via HTTP direto
-        base_url = full_url.split("?")[0].rstrip("/")
-        pdf_imprimir_url = base_url if base_url.endswith("secretaria-imprimir") else f"{base_url}/secretaria-imprimir"
-        
-        download_dir = os.path.join(os.getcwd(), "downloads")
-        os.makedirs(download_dir, exist_ok=True)
-        pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
-        
-        res_pdf = session.get(pdf_imprimir_url, timeout=10)
-        if res_pdf.status_code == 200 and len(res_pdf.content) > 100:
-            with open(pdf_historico_path, "wb") as f:
-                f.write(res_pdf.content)
-                
-            parsed = parse_pdf_data(pdf_historico_path)
-            if parsed:
-                for k, v in parsed.items():
-                    if v: aluno_info[k] = v
-                    
-        return {
-            "status": "success",
-            "aluno_info": aluno_info,
-            "pdf_historico": pdf_historico_path if os.path.exists(pdf_historico_path) else None,
-            "pdf_comprovante": None,
-            "historico": aluno_info.get("historico", [])
-        }
-    except Exception as e:
-        print(f"Direct HTTP candidate details fallback: {e}")
-        return {"status": "fallback"}
-
 def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
-    """Extrai detalhes do candidato no SIIU usando Playwright Headless com busca contextual, clique na linha do vínculo e leitura integral de PDF."""
+    """Extrai detalhes do candidato no SIIU abrindo o Chromium, localizando o vínculo e lendo o PDF."""
     def _task(page):
         # 1. Executar a busca contextual na tela do SIIU para gerar a tabela de resultados
         query_val = candidate.get("matricula") or candidate.get("nome", "")
@@ -776,14 +663,16 @@ def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_
             target_row = rows[idx_c] if idx_c < len(rows) else rows[0]
             
         if target_row:
-            action_btn = target_row.locator("a, button, [onclick], [data-href]").first
-            if action_btn.count() > 0:
+            view_btn = target_row.locator("a[href*='discentes/'], a[title*='Visualizar'], a[title*='Consultar'], a[title*='Detalhes'], a:has(.fa-eye), a:has(.fa-search), a:has(.fa-user), button[title*='Visualizar']").first
+            if view_btn.count() == 0:
+                view_btn = target_row.locator("td:last-child a, td:last-child button, a, button").first
+            if view_btn.count() > 0:
                 close_sweetalert_overlays(page)
                 try:
-                    action_btn.click(force=True)
+                    view_btn.click(force=True)
                 except Exception:
                     try:
-                        page.evaluate("el => el.click()", action_btn.element_handle())
+                        page.evaluate("el => el.click()", view_btn.element_handle())
                     except Exception:
                         pass
                 page.wait_for_timeout(2000)
@@ -792,117 +681,8 @@ def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_
 
     return _run_with_playwright_page(login, senha, _task)
 
-def search_and_extract_student_direct(login, senha, query, programa, fallback_name=None):
-    """Realiza a busca no SIIU via requisição HTTP direta em 1-2s sem abrir navegador."""
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-        
-        session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        })
-        
-        login_url = "https://notas-propgpq.siiu.unifesp.br/login"
-        res_login_page = session.get(login_url, timeout=8)
-        
-        csrf_token = None
-        soup = BeautifulSoup(res_login_page.text, "html.parser")
-        token_input = soup.find("input", {"name": "_token"}) or soup.find("meta", {"name": "csrf-token"})
-        if token_input:
-            csrf_token = token_input.get("value") or token_input.get("content")
-            
-        payload = {"username": login, "password": senha}
-        if csrf_token:
-            payload["_token"] = csrf_token
-            
-        res_post = session.post(login_url, data=payload, timeout=8, allow_redirects=True)
-        if "incorreto" in res_post.text.lower() or "credencial" in res_post.text.lower():
-            return {"status": "error", "message": "Usuário e/ou senha do SIIU incorretos."}
-            
-        discentes_url = "https://notas-propgpq.siiu.unifesp.br/portal-secretaria/discentes"
-        res_disc = session.get(discentes_url, timeout=8)
-        if res_disc.status_code != 200:
-            return {"status": "fallback"}
-            
-        search_data = {
-            "descricao": query,
-            "areas_prin_codigo": "0"
-        }
-        if csrf_token:
-            search_data["_token"] = csrf_token
-            
-        res_search = session.post(discentes_url, data=search_data, timeout=8)
-        soup_search = BeautifulSoup(res_search.text, "html.parser")
-        
-        rows = soup_search.select("table tbody tr")
-        cands = []
-        for idx, tr in enumerate(rows):
-            cols = [td.get_text(strip=True) for td in tr.find_all("td")]
-            if cols and len(cols) >= 6:
-                mat = cols[0]
-                nome = cols[1]
-                curso = cols[2]
-                ing = cols[3]
-                nivel = cols[4]
-                sit = cols[5]
-                if "Nenhum registro" in nome or "Nenhum registro" in mat:
-                    continue
-                
-                cands.append({
-                    "idx": idx,
-                    "matricula": mat,
-                    "nome": nome,
-                    "curso": curso,
-                    "ingresso": ing,
-                    "nivel": nivel,
-                    "situacao": sit,
-                    "historico_url": None,
-                    "action_urls": []
-                })
-                
-        if cands:
-            return {"status": "success", "candidates": cands}
-        elif fallback_name and query != fallback_name:
-            search_data["descricao"] = fallback_name
-            res_fb = session.post(discentes_url, data=search_data, timeout=8)
-            soup_fb = BeautifulSoup(res_fb.text, "html.parser")
-            rows_fb = soup_fb.select("table tbody tr")
-            cands_fb = []
-            for idx, tr in enumerate(rows_fb):
-                cols = [td.get_text(strip=True) for td in tr.find_all("td")]
-                if cols and len(cols) >= 6:
-                    mat = cols[0]
-                    nome = cols[1]
-                    curso = cols[2]
-                    ing = cols[3]
-                    nivel = cols[4]
-                    sit = cols[5]
-                    if "Nenhum registro" in nome or "Nenhum registro" in mat:
-                        continue
-                    cands_fb.append({
-                        "idx": idx,
-                        "matricula": mat,
-                        "nome": nome,
-                        "curso": curso,
-                        "ingresso": ing,
-                        "nivel": nivel,
-                        "situacao": sit,
-                        "historico_url": None,
-                        "action_urls": []
-                    })
-            if cands_fb:
-                return {"status": "success", "candidates": cands_fb}
-                
-        return {"status": "fallback"}
-    except Exception as e:
-        print(f"Direct HTTP fallback: {e}")
-        return {"status": "fallback"}
-
 def search_and_extract_student(login, senha, query, programa, cached_driver=None, fallback_name=None):
-    """Busca e extrai detalhes do discente no SIIU usando Playwright Headless de forma 100% invisível em segundo plano com leitura de PDF."""
+    """Busca e extrai detalhes do discente no SIIU em uma ÚNICA sessão do Playwright."""
     def _task(page):
         search_res = _search_page_logic(page, query, programa, fallback_name)
         if search_res.get("status") == "error":
