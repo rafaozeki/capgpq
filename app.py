@@ -2672,6 +2672,7 @@ def show_demand_page(sheet_id, info):
                             ("6. Frequência", tf['frequencia']['val']),
                             ("7. Período do curso", tf['periodo']['val']),
                             ("8. Término do curso", tf['termino_curso']['val'] or ainfo.get('termino_previsto', '')),
+                            ("9. Tipo de benefício", tf['beneficio']['val']),
                         ]
                         
                         seq_cols = st.columns(2)
@@ -2684,7 +2685,6 @@ def show_demand_page(sheet_id, info):
                         st.markdown("#### 📌 Outros Campos Complementares (EMTU)")
                         comp_emtu = [
                             ("SITUAÇÃO", tf['situacao']['val']),
-                            ("Tipo de benefício", tf['beneficio']['val']),
                             ("RUA", tf['rua']['val']),
                             ("Número", tf['numero']['val']),
                             ("Bairro", tf['bairro']['val']),
