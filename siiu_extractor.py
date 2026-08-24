@@ -484,6 +484,37 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             if defesa_html:
                 aluno_info['defesa'] = defesa_html.group(1).strip()
 
+            # Extração de dados cadastrais diretamente do cabeçalho HTML da tela do aluno
+            mat_html = re.search(r"Matr[ií]cula[\s:]*([\d]{4,10})", html_text, re.I)
+            if mat_html:
+                aluno_info['ra'] = mat_html.group(1).strip()
+                aluno_info['matricula'] = mat_html.group(1).strip()
+
+            nome_html = re.search(r"\n\s*([A-ZÀ-Ú\s]{4,60})\s*\n\s*Matr[ií]cula:", html_text)
+            if nome_html and nome_html.group(1).strip():
+                n_str = nome_html.group(1).strip()
+                if "PORTAL" not in n_str and "SISTEMA" not in n_str and "UNIFESP" not in n_str:
+                    aluno_info['nome'] = n_str
+
+            curso_html = re.search(r"Curso[\s:]*(?:[\d]+\s*-\s*)?(.*?)(?=\n|Ano|Ingresso|Nível|Nivel|$)", html_text, re.I)
+            if curso_html and curso_html.group(1).strip():
+                c_clean = curso_html.group(1).strip()
+                aluno_info['curso'] = c_clean
+                aluno_info['programa'] = c_clean
+
+            ing_html = re.search(r"Ano\s*Ingresso[\s:]*([\d]{4})", html_text, re.I)
+            if ing_html:
+                aluno_info['ingresso'] = ing_html.group(1).strip()
+
+            sit_html = re.search(r"Ano\s*Ingresso[\s:]*[\d]{4}\s*\((.*?)\)", html_text, re.I)
+            if sit_html:
+                aluno_info['situacao'] = sit_html.group(1).strip()
+
+            periodo_html = re.search(r"Per[ií]odo[\s:]*([\d]{2}/[\d]{2}/[\d]{4})\s*a\s*([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
+            if periodo_html:
+                if not aluno_info.get('inicio'): aluno_info['inicio'] = periodo_html.group(1).strip()
+                if not aluno_info.get('termino_previsto'): aluno_info['termino_previsto'] = periodo_html.group(2).strip()
+
             # Extração de fallback do HTML caso conste
             cpf_h = re.search(r"(?:CPF|C\.P\.F\.)[\s:\ºn]*([\d\.\-]+)", html_text, re.I)
             if cpf_h and not aluno_info.get('cpf'):
@@ -573,13 +604,21 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
 
             if parsed:
                 for k, v in parsed.items():
-                    if v: aluno_info[k] = v
+                    if v:
+                        # Nunca sobrescrever Matrícula/RA válida já identificada da tela com valor menor que 4 dígitos
+                        if k in ('ra', 'matricula') and aluno_info.get('matricula') and (not str(v).isdigit() or len(str(v)) < 4):
+                            continue
+                        aluno_info[k] = v
 
         if os.path.exists(pdf_comprovante_path) and os.path.getsize(pdf_comprovante_path) > 50:
             parsed_c = parse_pdf_data(pdf_comprovante_path)
             if parsed_c:
                 for k, v in parsed_c.items():
-                    if v and not aluno_info.get(k): aluno_info[k] = v
+                    if v:
+                        if k in ('ra', 'matricula') and aluno_info.get('matricula') and (not str(v).isdigit() or len(str(v)) < 4):
+                            continue
+                        if not aluno_info.get(k):
+                            aluno_info[k] = v
 
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
