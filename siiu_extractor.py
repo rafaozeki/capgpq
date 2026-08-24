@@ -542,26 +542,53 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         pdf_historico_path = os.path.join(download_dir, f"Historico_{aluno_info['ra']}.pdf")
         pdf_comprovante_path = os.path.join(download_dir, f"Comprovante_{aluno_info['ra']}.pdf")
 
-        # 1. Baixar o Histórico Acadêmico via clique com expect_download oficial do Chrome
+        # 1. Localizar botão de impressão/histórico na tela do aluno
+        imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a[href*='imprimir'], a[href*='historico'], a:has-text('Imprimir'), button:has-text('Imprimir'), a:has-text('Histórico'), button:has-text('Histórico')").first
+        if imprimir_btn.count() > 0:
+            h_cand = imprimir_btn.get_attribute("href")
+            if h_cand and not h_cand.startswith("#"):
+                pdf_imprimir_url = h_cand if h_cand.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{h_cand if h_cand.startswith('/') else '/' + h_cand}"
+
+        # 2. Baixar o PDF usando page.request autenticado com cookies da sessão
         try:
-            close_sweetalert_overlays(page)
-            imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a[href*='imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir'), a:has-text('Histórico'), button:has-text('Histórico')").first
-            if imprimir_btn.count() > 0:
-                h_cand = imprimir_btn.get_attribute("href")
-                if h_cand and not h_cand.startswith("#"):
-                    pdf_imprimir_url = h_cand if h_cand.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{h_cand if h_cand.startswith('/') else '/' + h_cand}"
+            resp_req = page.request.get(pdf_imprimir_url, timeout=15000)
+            if resp_req.ok:
+                resp_bytes = resp_req.body()
+                if len(resp_bytes) > 100:
+                    with open(pdf_historico_path, "wb") as f_pdf:
+                        f_pdf.write(resp_bytes)
+        except Exception as e_req:
+            print(f"Aviso page.request histórico: {e_req}")
 
-                try:
-                    with page.expect_download(timeout=12000) as dl_info:
-                        imprimir_btn.click(force=True)
-                    dl = dl_info.value
-                    dl.save_as(pdf_historico_path)
-                except Exception as e_dl:
-                    print(f"Aviso expect_download histórico: {e_dl}")
-        except Exception as e_cl:
-            print(f"Aviso clique histórico: {e_cl}")
+        # 3. Fallback: Se não baixou via request, tentar expect_download ou expect_popup ao clicar
+        if not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) < 100:
+            try:
+                close_sweetalert_overlays(page)
+                if imprimir_btn.count() > 0:
+                    try:
+                        with page.expect_download(timeout=8000) as dl_info:
+                            imprimir_btn.click(force=True)
+                        dl = dl_info.value
+                        dl.save_as(pdf_historico_path)
+                    except Exception:
+                        # Tentar capturar popup aberta por target=_blank
+                        try:
+                            with page.expect_popup(timeout=5000) as pop_info:
+                                imprimir_btn.click(force=True)
+                            popup = pop_info.value
+                            popup.wait_for_load_state("domcontentloaded")
+                            pop_url = popup.url
+                            r_pop = page.request.get(pop_url)
+                            if r_pop.ok and len(r_pop.body()) > 100:
+                                with open(pdf_historico_path, "wb") as f_p:
+                                    f_p.write(r_pop.body())
+                            popup.close()
+                        except Exception:
+                            pass
+            except Exception as e_cl:
+                print(f"Aviso clique histórico: {e_cl}")
 
-        # 2. Se expect_download não capturou, fazer fetch JS interno no Chromium para obter os bytes do PDF
+        # 4. Fallback JS Fetch interno no Chromium
         if not os.path.exists(pdf_historico_path) or os.path.getsize(pdf_historico_path) < 100:
             try:
                 pdf_b64 = page.evaluate("""async (url) => {
@@ -584,46 +611,34 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             except Exception as e_b64:
                 print(f"Aviso fetch b64 histórico: {e_b64}")
 
-        # 3. Baixar o Comprovante de Matrícula se solicitado
+        # 5. Baixar o Comprovante de Matrícula se solicitado
         if baixar_comprovante:
             try:
-                close_sweetalert_overlays(page)
-                comp_btn = page.locator("a[href*='comprovante-matricula'], a:has-text('Comprovante')").first
-                if comp_btn.count() > 0:
-                    try:
-                        with page.expect_download(timeout=8000) as dl_c_info:
-                            comp_btn.click(force=True)
-                        dl_c = dl_c_info.value
-                        dl_c.save_as(pdf_comprovante_path)
-                    except Exception:
-                        pass
+                r_comp = page.request.get(pdf_comprovante_url, timeout=10000)
+                if r_comp.ok and len(r_comp.body()) > 100:
+                    with open(pdf_comprovante_path, "wb") as f_c:
+                        f_c.write(r_comp.body())
             except Exception:
                 pass
 
-            if not os.path.exists(pdf_comprovante_path) or os.path.getsize(pdf_comprovante_path) < 100:
-                try:
-                    pdf_c_b64 = page.evaluate("""async (url) => {
-                        try {
-                            const r = await fetch(url);
-                            const b = await r.blob();
-                            return new Promise((res) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => res(reader.result.split(',')[1]);
-                                reader.readAsDataURL(b);
-                            });
-                        } catch(e) { return null; }
-                    }""", pdf_comprovante_url)
-                    if pdf_c_b64:
-                        import base64
-                        c_data = base64.b64decode(pdf_c_b64)
-                        with open(pdf_comprovante_path, "wb") as f_c:
-                            f_c.write(c_data)
-                except Exception as e_cb64:
-                    print(f"Aviso fetch b64 comprovante: {e_cb64}")
-
-        # 4. LER O ARQUIVO PDF SALVO EM DISCO (downloads/Historico_{ra}.pdf) usando pdfplumber + pypdf
+        # 6. LER O ARQUIVO SALVO (PDF ou HTML) E EXTRAIR OS DADOS
         if os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 50:
             parsed = parse_pdf_data(pdf_historico_path)
+            if not parsed or not parsed.get('cpf'):
+                # Se parse_pdf_data não extraiu (por exemplo, se o retorno foi HTML), ler como texto
+                try:
+                    with open(pdf_historico_path, "r", encoding="utf-8", errors="ignore") as f_txt:
+                        raw_txt_content = f_txt.read()
+                    if "<html" in raw_txt_content.lower() or "cpf" in raw_txt_content.lower():
+                        from bs4 import BeautifulSoup
+                        soup_h = BeautifulSoup(raw_txt_content, "html.parser")
+                        parsed_html = parse_text_data(soup_h.get_text(separator="\n"))
+                        if parsed_html:
+                            parsed = parsed or {}
+                            parsed.update(parsed_html)
+                except Exception:
+                    pass
+
             if parsed:
                 for k, v in parsed.items():
                     if v: aluno_info[k] = v
