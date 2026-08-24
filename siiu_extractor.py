@@ -331,17 +331,54 @@ def _search_page_logic(page, query, programa, fallback_name=None):
         found_cands = []
         
         for idx, row in enumerate(rows):
-            cols = row.locator("td").all_text_contents()
+            cols = [c.strip() for c in row.locator("td").all_text_contents() if c.strip()]
             if cols and len(cols) > 0:
-                matricula = cols[0].strip() if len(cols) > 0 else ""
-                nome = cols[1].strip() if len(cols) > 1 else ""
-                curso = cols[2].strip() if len(cols) > 2 else ""
-                ingresso = cols[3].strip() if len(cols) > 3 else ""
-                nivel = cols[4].strip() if len(cols) > 4 else ""
-                situacao = cols[5].strip() if len(cols) > 5 else ""
-                
-                if "Nenhum registro" in nome or "Nenhum registro" in matricula or "Selecione um programa" in nome:
+                raw_full = " ".join(cols)
+                if "Nenhum registro" in raw_full or "Selecione um programa" in raw_full:
                     continue
+
+                matricula = ""
+                nome = ""
+                curso = ""
+                ingresso = ""
+                nivel = ""
+                situacao = ""
+
+                # 1. Identificar coluna de Matrícula (número de 4 a 10 dígitos)
+                mat_idx = None
+                for ci, c_val in enumerate(cols):
+                    c_num = re.sub(r'\D', '', c_val)
+                    if c_num and 4 <= len(c_num) <= 10:
+                        matricula = c_num
+                        mat_idx = ci
+                        break
+                
+                if not matricula and len(cols) > 1 and cols[1].isdigit() and len(cols[1]) >= 4:
+                    matricula = cols[1]
+                    mat_idx = 1
+
+                # 2. Identificar Nome (coluna imediatamente após a matrícula)
+                if mat_idx is not None and mat_idx + 1 < len(cols):
+                    nome = cols[mat_idx + 1]
+                elif len(cols) > 1:
+                    nome = cols[1] if not cols[1].isdigit() else (cols[2] if len(cols) > 2 else "")
+
+                # 3. Identificar Curso/Programa
+                for ci, c_val in enumerate(cols):
+                    if ci not in (0, 1) and any(kw in c_val.upper() for kw in ["SOCIAIS", "EDUCACAO", "EDUCAÇÃO", "FILOSOFIA", "HISTORIA", "HISTÓRIA", "LETRAS", "ARTE", "SAUDE", "SAÚDE"]):
+                        curso = c_val
+                        break
+                if not curso and len(cols) > (mat_idx + 2 if mat_idx is not None else 2):
+                    curso = cols[(mat_idx + 2 if mat_idx is not None else 2)]
+
+                # 4. Identificar Nível, Ingresso e Situação
+                for c_val in cols:
+                    if any(nv in c_val.upper() for nv in ["MESTRADO", "DOUTORADO", "POS-DOUTORADO", "PÓS-DOUTORADO"]):
+                        nivel = c_val
+                    if any(st in c_val.upper() for st in ["EM CURSO", "FORMADO", "CONCLUÍDO", "CONCLUIDO", "TRANCADO", "CANCELADO", "DESLIGADO", "TITULADO", "REGULAR"]):
+                        situacao = c_val
+                    if re.match(r"^\d{4}$", c_val):
+                        ingresso = c_val
                     
                 action_urls = []
                 historico_url = None
@@ -622,6 +659,22 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
 
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
+
+    # Validação final de consistência do RA/Matrícula para garantir integridade
+    curr_ra = str(aluno_info.get('ra', '')).strip()
+    if not curr_ra or not curr_ra.isdigit() or len(curr_ra) < 4:
+        cand_mat = str(candidate.get('matricula', '')).strip()
+        if cand_mat and cand_mat.isdigit() and len(cand_mat) >= 4:
+            aluno_info['ra'] = cand_mat
+            aluno_info['matricula'] = cand_mat
+        else:
+            try:
+                m_body = re.search(r"Matr[ií]cula[\s:]*([\d]{4,10})", page.locator("body").inner_text(), re.I)
+                if m_body:
+                    aluno_info['ra'] = m_body.group(1).strip()
+                    aluno_info['matricula'] = m_body.group(1).strip()
+            except Exception:
+                pass
 
     valid_hist_pdf = pdf_historico_path if (pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100) else None
     valid_comp_pdf = pdf_comprovante_path if (pdf_comprovante_path and os.path.exists(pdf_comprovante_path) and os.path.getsize(pdf_comprovante_path) > 100) else None
