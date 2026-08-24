@@ -649,14 +649,18 @@ def show_control_panel(config):
                         rows = data[1:]
 
                         col_dt_exec_idx = None
+                        col_exec_idx = None
                         import unicodedata
                         for idx_h, col_h in enumerate(header):
                             c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
                             if "data" in c_norm and "execucao" in c_norm:
                                 col_dt_exec_idx = idx_h
-                                break
+                            elif "polare" in c_norm or "executante" in c_norm:
+                                col_exec_idx = idx_h
                         if col_dt_exec_idx is None and len(header) > 39:
                             col_dt_exec_idx = 39
+                        if col_exec_idx is None and len(header) > 38:
+                            col_exec_idx = 38
 
                         for reversed_idx, row in enumerate(reversed(rows)):
                             idx_real = len(rows) - reversed_idx + 1
@@ -683,7 +687,14 @@ def show_control_panel(config):
                                     data_exec_parsed = parse_date_br(data_exec_val)
 
                             val_dt_exec_efetiva = row_padded[col_dt_exec_idx].strip() if (col_dt_exec_idx is not None and col_dt_exec_idx < len(row_padded)) else ""
-                            is_concluida = bool(val_dt_exec_efetiva)
+                            val_exec_efetivo = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
+                            
+                            just_conf_row = st.session_state.get(f"just_confirmed_{sheet_id}_{idx_real}")
+                            if just_conf_row:
+                                if not val_exec_efetivo: val_exec_efetivo = just_conf_row.get("executante", "")
+                                if not val_dt_exec_efetiva: val_dt_exec_efetiva = just_conf_row.get("data", "")
+
+                            is_concluida = bool(val_dt_exec_efetiva or val_exec_efetivo)
 
                             all_activities.append({
                                 "sheet_id": sheet_id,
@@ -2137,6 +2148,8 @@ def show_demand_page(sheet_id, info):
                 
         if col_dt_exec_idx is None and len(header) > 39:
             col_dt_exec_idx = 39
+        if col_exec_idx is None and len(header) > 38:
+            col_exec_idx = 38
 
         for reversed_idx, row in enumerate(reversed(rows)):
             idx_real = len(rows) - reversed_idx + 1
@@ -2160,7 +2173,13 @@ def show_demand_page(sheet_id, info):
                     
             val_dt_exec_efetiva = row_padded[col_dt_exec_idx].strip() if (col_dt_exec_idx is not None and col_dt_exec_idx < len(row_padded)) else ""
             val_exec_efetivo = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
-            is_concluida = bool(val_dt_exec_efetiva)
+            
+            just_conf_row = st.session_state.get(f"just_confirmed_{sheet_id}_{idx_real}")
+            if just_conf_row:
+                if not val_exec_efetivo: val_exec_efetivo = just_conf_row.get("executante", "")
+                if not val_dt_exec_efetiva: val_dt_exec_efetiva = just_conf_row.get("data", "")
+
+            is_concluida = bool(val_dt_exec_efetiva or val_exec_efetivo)
 
             rows_parsed.append({
                 "idx_real": idx_real,
