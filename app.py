@@ -2470,6 +2470,10 @@ def show_demand_page(sheet_id, info):
                                 except Exception as ex_conf:
                                     st.error(f"Erro ao extrair vínculo: {ex_conf}")
 
+                    # Obter resultado da conferência do SIIU (se houver)
+                    res_siiu = st.session_state.get(state_key_res)
+                    ainfo = res_siiu.get("aluno_info", {}) if (res_siiu and res_siiu.get("status") == "success") else {}
+
                     # Preparar componentes de RG
                     rg_siiu_raw = ainfo.get('rg', '')
                     rg_siiu_parts = parse_rg_components(rg_siiu_raw)
@@ -2483,7 +2487,6 @@ def show_demand_page(sheet_id, info):
                     plan_rg_uf = tf['uf_rg']['val'] if tf['uf_rg']['val'] else plan_rg_parts['uf']
 
                     # Exibir resultado da conferência do SIIU (se houver)
-                    res_siiu = st.session_state.get(state_key_res)
                     if res_siiu:
                         if res_siiu.get("status") == "error":
                             st.error(f"❌ {res_siiu.get('message')}")
