@@ -463,36 +463,23 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
     
     pdf_historico_path = None
     pdf_comprovante_path = None
-    
-    urls_to_try = []
-    if candidate.get("historico_url"):
-        urls_to_try.append(candidate.get("historico_url"))
-    for u in candidate.get("action_urls", []):
-        if u not in urls_to_try:
-            urls_to_try.append(u)
 
     download_dir = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_dir, exist_ok=True)
 
-    # Pegar apenas a URL principal do histórico/discente para evitar navegações secundárias rápidas (404)
-    target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
-    if not target_url or target_url == "#":
-        return {
-            "status": "error",
-            "message": "URL do discente não encontrada."
-        }
-        
-    full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
-    
-    download_dir = os.path.join(os.getcwd(), "downloads")
-    os.makedirs(download_dir, exist_ok=True)
+    # Se a página já não estiver na tela de detalhes do aluno, tentar navegar para target_url
+    if "portal-secretaria/discentes/" not in page.url or page.url.endswith("/discentes"):
+        target_url = candidate.get("historico_url") or (candidate.get("action_urls")[0] if candidate.get("action_urls") else None)
+        if target_url and target_url != "#":
+            full_url = target_url if target_url.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{target_url if target_url.startswith('/') else '/' + target_url}"
+            try:
+                page.goto(full_url, timeout=25000, wait_until="domcontentloaded")
+                page.wait_for_timeout(1500)
+            except Exception as e_nav:
+                print(f"Aviso ao navegar para {full_url}: {e_nav}")
 
     try:
-        # 1. Navegar via Chromium para a página principal de detalhes do discente
-        page.goto(full_url, timeout=25000, wait_until="domcontentloaded")
-        page.wait_for_timeout(1500)
-
-        # 2. Extrair dados da seção "Dados da Banca" diretamente do HTML da página do aluno
+        # 1. Extrair dados da seção "Dados da Banca" diretamente do HTML da página do aluno
         try:
             html_text = page.locator("body").inner_text()
             
@@ -531,6 +518,19 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
             defesa_html = re.search(r"Defesa[\s:]*.*?([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
             if defesa_html:
                 aluno_info['defesa'] = defesa_html.group(1).strip()
+
+            # Extração de fallback do HTML caso conste
+            cpf_h = re.search(r"(?:CPF|C\.P\.F\.)[\s:\ºn]*([\d\.\-]+)", html_text, re.I)
+            if cpf_h and not aluno_info.get('cpf'):
+                aluno_info['cpf'] = cpf_h.group(1).strip()
+
+            rg_h = re.search(r"(?:RG|RNE)[\s:\ºn]*([\d\.\-A-Za-z/]+)", html_text, re.I)
+            if rg_h and not aluno_info.get('rg'):
+                aluno_info['rg'] = rg_h.group(1).strip()
+
+            term_h = re.search(r"(?:Término\s*Previsto|Previsão\s*de\s*Término|Término)[\s:\ºn]*([\d]{2}/[\d]{2}/[\d]{4})", html_text, re.I)
+            if term_h and not aluno_info.get('termino_previsto'):
+                aluno_info['termino_previsto'] = term_h.group(1).strip()
         except Exception as e_html:
             print(f"Aviso ao ler HTML da banca: {e_html}")
 
@@ -545,8 +545,12 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
         # 1. Baixar o Histórico Acadêmico via clique com expect_download oficial do Chrome
         try:
             close_sweetalert_overlays(page)
-            imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir')").first
+            imprimir_btn = page.locator("a[href*='secretaria-imprimir'], a[href*='imprimir'], a:has-text('Imprimir'), button:has-text('Imprimir'), a:has-text('Histórico'), button:has-text('Histórico')").first
             if imprimir_btn.count() > 0:
+                h_cand = imprimir_btn.get_attribute("href")
+                if h_cand and not h_cand.startswith("#"):
+                    pdf_imprimir_url = h_cand if h_cand.startswith("http") else f"https://notas-propgpq.siiu.unifesp.br{h_cand if h_cand.startswith('/') else '/' + h_cand}"
+
                 try:
                     with page.expect_download(timeout=12000) as dl_info:
                         imprimir_btn.click(force=True)
@@ -630,32 +634,9 @@ def _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante):
                 for k, v in parsed_c.items():
                     if v and not aluno_info.get(k): aluno_info[k] = v
 
-        # Finalização da extração sem abrir janelas/popups externos do navegador
-        pass
-
     except Exception as e_proc:
         print(f"Erro ao processar discente: {e_proc}")
 
-    debug_pdf = {
-        "pdf_path": pdf_historico_path,
-        "exists": os.path.exists(pdf_historico_path) if pdf_historico_path else False,
-        "size_bytes": os.path.getsize(pdf_historico_path) if (pdf_historico_path and os.path.exists(pdf_historico_path)) else 0,
-        "raw_text": "",
-        "parsed_fields": {}
-    }
-
-    if pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 10:
-        parsed_debug = parse_pdf_data(pdf_historico_path)
-        debug_pdf["parsed_fields"] = parsed_debug
-        try:
-            if pdfplumber:
-                with pdfplumber.open(pdf_historico_path) as p_doc:
-                    t_list = [p.extract_text() for p in p_doc.pages if p.extract_text()]
-                    debug_pdf["raw_text"] = "\n--- PÁGINA ---\n".join(t_list)
-        except Exception as e_raw:
-            debug_pdf["raw_text"] = f"Erro ao extrair texto bruto: {e_raw}"
-
-    valid_hist_pdf = pdf_historico_path if (pdf_historico_path and os.path.exists(pdf_historico_path) and os.path.getsize(pdf_historico_path) > 100) else None
     valid_comp_pdf = pdf_comprovante_path if (pdf_comprovante_path and os.path.exists(pdf_comprovante_path) and os.path.getsize(pdf_comprovante_path) > 100) else None
 
     return {
@@ -753,9 +734,47 @@ def extract_candidate_details_direct(login, senha, candidate, baixar_historico=T
         return {"status": "fallback"}
 
 def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
-    """Extrai detalhes do candidato no SIIU usando Playwright Headless com leitura integral de PDF."""
+    """Extrai detalhes do candidato no SIIU usando Playwright Headless com busca contextual, clique na linha do vínculo e leitura integral de PDF."""
     def _task(page):
+        # 1. Executar a busca contextual na tela do SIIU para gerar a tabela de resultados
+        query_val = candidate.get("matricula") or candidate.get("nome", "")
+        prog_val = candidate.get("curso") or "Todos os Programas"
+        
+        _search_page_logic(page, query_val, prog_val)
+        
+        # 2. Localizar a linha correspondente ao vínculo selecionado
+        rows = page.locator("table tbody tr").all()
+        target_row = None
+        for r in rows:
+            tds = [t.strip() for t in r.locator("td").all_text_contents()]
+            if tds and len(tds) > 0:
+                mat_r = tds[0]
+                curso_r = tds[2] if len(tds) > 2 else ""
+                niv_r = tds[4] if len(tds) > 4 else ""
+                if mat_r == candidate.get("matricula"):
+                    if (not candidate.get("curso") or candidate.get("curso") in curso_r) and (not candidate.get("nivel") or candidate.get("nivel") in niv_r):
+                        target_row = r
+                        break
+                        
+        if not target_row and rows:
+            idx_c = candidate.get("idx", 0)
+            target_row = rows[idx_c] if idx_c < len(rows) else rows[0]
+            
+        if target_row:
+            action_btn = target_row.locator("a, button, [onclick], [data-href]").first
+            if action_btn.count() > 0:
+                close_sweetalert_overlays(page)
+                try:
+                    action_btn.click(force=True)
+                except Exception:
+                    try:
+                        page.evaluate("el => el.click()", action_btn.element_handle())
+                    except Exception:
+                        pass
+                page.wait_for_timeout(2000)
+                
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
+
     return _run_with_playwright_page(login, senha, _task)
 
 def search_and_extract_student_direct(login, senha, query, programa, fallback_name=None):
