@@ -2,6 +2,17 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.2] — 24/08/2026 (Horário: 13:15)
+
+### 🪪 Reconhecimento Inteligente de Órgão/UF de RG & Reordenação da Sequência SPTrans
+- **Parser Inteligente de Componentes de RG (Órgão Emissor e UF)**:
+  - Implementada a função `parse_rg_components` e validação contextual de órgão/UF no `check_field_match`. O sistema agora reconhece automaticamente siglas acopladas ao número de RG (ex: `52.783.871-8-SSP/SP`, `52.783.871-8- PC-PR`), eliminando falsas divergências.
+- **Reordenação da Sequência de Cópia para o Portal SPTrans**:
+  - Movido o campo **`1. Programa de Pós-Graduação`** para o topo da lista.
+  - Adicionado o campo **`4. UF Emissor`** logo após o RG, puxando os dados do estado de emissão do documento.
+
+---
+
 ## [v1.1.1] — 24/08/2026 (Horário: 12:30)
 
 ### 🔍 Filtro de Busca por Status: "Atividade concluída" e "Atividade pendente"

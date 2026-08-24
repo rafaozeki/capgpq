@@ -1924,6 +1924,38 @@ def extract_transport_fields(row_padded, header):
 
     return fields
 
+def parse_rg_components(rg_str):
+    """Extrai número de RG, órgão emissor e UF de emissão a partir de uma string composta (ex: 52.783.871-8-SSP/SP ou 52.783.871-8- PC-PR)."""
+    if not rg_str:
+        return {"numero": "", "orgao": "", "uf": ""}
+    
+    s = str(rg_str).strip()
+    ufs = {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}
+    
+    s_clean = re.sub(r"^(?:RG|RNE|DOCUMENTO)[\s:\ºn]*", "", s, flags=re.I).strip()
+    uf_found = ""
+    orgao_found = ""
+    
+    tokens = [t for t in re.split(r"[\s/\-_\\,]+", s_clean) if t]
+    
+    if len(tokens) >= 2 and tokens[-1].upper() in ufs:
+        uf_found = tokens[-1].upper()
+        tokens = tokens[:-1]
+        
+    if len(tokens) >= 2 and re.match(r"^[A-Za-z]{2,10}$", tokens[-1]) and tokens[-1].upper() not in ufs:
+        orgao_found = tokens[-1].upper()
+        tokens = tokens[:-1]
+    elif len(tokens) >= 2 and re.match(r"^[A-Za-z]{2,10}$", tokens[-1]):
+        orgao_found = tokens[-1].upper()
+        tokens = tokens[:-1]
+        
+    num_rg = "-".join(tokens) if len(tokens) > 1 and len(tokens[-1]) == 1 else " ".join(tokens)
+    return {
+        "numero": num_rg,
+        "orgao": orgao_found,
+        "uf": uf_found
+    }
+
 def check_field_match(val_planilha, val_siiu, check_type="text"):
     """Compara dois valores e retorna se batem (True/False)."""
     if not val_planilha or not val_siiu:
@@ -1944,6 +1976,43 @@ def check_field_match(val_planilha, val_siiu, check_type="text"):
         p2 = parse_date_br(s2)
         if p1 and p2:
             return p1 == p2
+
+    if check_type == "orgao":
+        parts1 = parse_rg_components(s1)
+        parts2 = parse_rg_components(s2)
+        org1 = parts1['orgao'] or s1
+        org2 = parts2['orgao'] or s2
+        if org1 and org2:
+            if org1 == org2 or org1 in s2 or org2 in s1 or org1 in org2 or org2 in org1:
+                return True
+        words1 = set(re.findall(r'[A-Za-z]{2,}', s1))
+        words2 = set(re.findall(r'[A-Za-z]{2,}', s2))
+        if words1.intersection(words2):
+            return True
+
+    if check_type == "uf":
+        estados_br = {
+            "SAO PAULO": "SP", "SÃO PAULO": "SP", "RIO DE JANEIRO": "RJ", "MINAS GERAIS": "MG",
+            "PARANA": "PR", "PARANÁ": "PR", "SANTA CATARINA": "SC", "RIO GRANDE DO SUL": "RS",
+            "BAHIA": "BA", "PERNAMBUCO": "PE", "CEARA": "CE", "CEARÁ": "CE", "DISTRITO FEDERAL": "DF",
+            "GOIAS": "GO", "GOIÁS": "GO", "ESPIRITO SANTO": "ES", "ESPÍRITO SANTO": "ES",
+            "PARA": "PA", "PARÁ": "PA", "MARANHAO": "MA", "MARANHÃO": "MA", "MATO GROSSO": "MT",
+            "MATO GROSSO DO SUL": "MS", "RIO GRANDE DO NORTE": "RN", "PARAIBA": "PB", "PARAÍBA": "PB",
+            "ALAGOAS": "AL", "SERGIPE": "SE", "PIAUI": "PI", "PIAUÍ": "PI", "RONDONIA": "RO", "RONDÔNIA": "RO",
+            "TOCANTINS": "TO", "ACRE": "AC", "AMAPA": "AP", "AMAPÁ": "AP", "RORAIMA": "RR", "AMAZONAS": "AM"
+        }
+        uf1 = estados_br.get(s1, s1)
+        uf2 = estados_br.get(s2, s2)
+        parts1 = parse_rg_components(s1)
+        parts2 = parse_rg_components(s2)
+        if parts1['uf']: uf1 = parts1['uf']
+        if parts2['uf']: uf2 = parts2['uf']
+        if uf1 == uf2 and len(uf1) == 2:
+            return True
+        if len(uf1) == 2 and re.search(r'[-/\s]' + re.escape(uf1) + r'(?:$|[-/\s])', s2):
+            return True
+        if len(uf2) == 2 and re.search(r'[-/\s]' + re.escape(uf2) + r'(?:$|[-/\s])', s1):
+            return True
 
     if len(s1) > 3 and len(s2) > 3:
         if s1 in s2 or s2 in s1:
@@ -2410,15 +2479,26 @@ def show_demand_page(sheet_id, info):
                             ainfo = res_siiu.get("aluno_info", {})
                             st.markdown("#### 📊 Resultado da Conferência (Planilha vs. SIIU)")
                         
+                            rg_siiu_raw = ainfo.get('rg', '')
+                            rg_siiu_parts = parse_rg_components(rg_siiu_raw)
+                            siiu_rg_num = rg_siiu_parts['numero'] if rg_siiu_parts['numero'] else rg_siiu_raw
+                            siiu_rg_org = rg_siiu_parts['orgao'] if rg_siiu_parts['orgao'] else ainfo.get('orgao_emissor', rg_siiu_raw)
+                            siiu_rg_uf = rg_siiu_parts['uf'] if rg_siiu_parts['uf'] else ainfo.get('uf_rg', rg_siiu_raw)
+
+                            plan_rg_parts = parse_rg_components(tf['rg']['val'])
+                            plan_rg_num = plan_rg_parts['numero'] if plan_rg_parts['numero'] else tf['rg']['val']
+                            plan_rg_org = tf['orgao_emissor']['val'] if tf['orgao_emissor']['val'] else plan_rg_parts['orgao']
+                            plan_rg_uf = tf['uf_rg']['val'] if tf['uf_rg']['val'] else plan_rg_parts['uf']
+
                             # Definição dos campos a conferir conforme solicitação do usuário
                             if is_sptrans:
                                 check_specs = [
                                     ("MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
                                     ("TÉRMINO DO CURSO", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
                                     ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
-                                    ("RG / Documento", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
-                                    ("Órgão emissor RG", tf['orgao_emissor']['val'], ainfo.get('rg', ''), "text", tf['orgao_emissor']['col_name'], tf['orgao_emissor']['col_idx']),
-                                    ("Estado de emissão RG", tf['uf_rg']['val'], ainfo.get('rg', ''), "text", tf['uf_rg']['col_name'], tf['uf_rg']['col_idx']),
+                                    ("RG / Documento", plan_rg_num, siiu_rg_num, "digits", tf['rg']['col_name'], tf['rg']['col_idx']),
+                                    ("Órgão emissor RG", plan_rg_org, siiu_rg_org, "orgao", tf['orgao_emissor']['col_name'], tf['orgao_emissor']['col_idx']),
+                                    ("Estado de emissão RG", plan_rg_uf, siiu_rg_uf, "uf", tf['uf_rg']['col_name'], tf['uf_rg']['col_idx']),
                                     ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
                                     ("Data de nascimento", tf['nascimento']['val'], ainfo.get('nascimento', ''), "date", tf['nascimento']['col_name'], tf['nascimento']['col_idx']),
                                 ]
@@ -2427,7 +2507,7 @@ def show_demand_page(sheet_id, info):
                                     ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
                                     ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
                                     ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
-                                    ("RG ou RNE", tf['rg']['val'], ainfo.get('rg', ''), "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                                    ("RG ou RNE", plan_rg_num, siiu_rg_num, "text", tf['rg']['col_name'], tf['rg']['col_idx']),
                                     ("Término do Curso", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
                                 ]
                                 
@@ -2473,21 +2553,22 @@ def show_demand_page(sheet_id, info):
                             
                             if is_sptrans:
                                 seq_sptrans = [
-                                    ("1. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
-                                    ("2. RG", tf['rg']['val'] or ainfo.get('rg', '')),
-                                    ("3. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
-                                    ("4. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
-                                    ("5. Telefone Residencial", tf['tel_res']['val']),
-                                    ("6. Telefone Celular", tf['tel_cel']['val']),
-                                    ("7. Endereço de E-mail", tf['email']['val']),
-                                    ("8. CEP", tf['cep']['val']),
-                                    ("9. RUA (Logradouro)", tf['rua']['val']),
-                                    ("10. Número", tf['numero']['val']),
-                                    ("11. Bairro", tf['bairro']['val']),
-                                    ("12. Cidade", tf['cidade']['val']),
-                                    ("13. Estado", tf['estado']['val']),
-                                    ("14. Complemento", tf['complemento']['val']),
-                                    ("15. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                                    ("1. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
+                                    ("2. Matrícula", tf['matricula']['val'] or ainfo.get('ra', '')),
+                                    ("3. RG", plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')),
+                                    ("4. UF Emissor", tf['uf_rg']['val'] or plan_rg_parts['uf'] or siiu_rg_uf or ainfo.get('uf_rg', '')),
+                                    ("5. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                                    ("6. Data de Nascimento", tf['nascimento']['val'] or ainfo.get('nascimento', '')),
+                                    ("7. Telefone Residencial", tf['tel_res']['val']),
+                                    ("8. Telefone Celular", tf['tel_cel']['val']),
+                                    ("9. Endereço de E-mail", tf['email']['val']),
+                                    ("10. CEP", tf['cep']['val']),
+                                    ("11. RUA (Logradouro)", tf['rua']['val']),
+                                    ("12. Número", tf['numero']['val']),
+                                    ("13. Bairro", tf['bairro']['val']),
+                                    ("14. Cidade", tf['cidade']['val']),
+                                    ("15. Estado", tf['estado']['val']),
+                                    ("16. Complemento", tf['complemento']['val']),
                                 ]
                                 
                                 seq_cols = st.columns(2)
