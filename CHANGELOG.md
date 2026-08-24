@@ -2,6 +2,18 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.0] — 24/08/2026 (Horário: 12:24)
+
+### 🟢 Botão "Confirmar cadastro na SPTrans" & Registro de Executante POLARE
+- **Efetivação de Cadastro na SPTrans com 1 Clique**:
+  - Adicionado o botão **`✅ Confirmar cadastro na SPTrans`** diretamente abaixo da Sequência de Cópia no módulo SPTrans.
+- **Registro do Usuário e Data/Horário na Planilha**:
+  - Ao clicar no botão, o sistema identifica o nome/usuário da sessão e grava automaticamente o nome na coluna `"POLARE / EXECUTANTE DA ATIVIDADE"` (Coluna 38) e a data/horário em `"DATA DA EXECUÇÃO"` (Coluna 39).
+- **Indicador Visual de Atividade Concluída**:
+  - Exibição do selo `✅ CONCLUÍDO (Executante)` no título do card do aluno e caixa verde de confirmação com os detalhes da execução.
+
+---
+
 ## [v1.0.2] — 13/08/2026 (Horário: 15:27)
 
 ### 🐛 Correção do Mapeamento do Campo Programa de Pós-Graduação
