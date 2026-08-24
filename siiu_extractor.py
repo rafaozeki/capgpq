@@ -59,7 +59,7 @@ def parse_text_data(texto_full):
     sexo_m = re.search(r"Sexo:\s*([^\s\n\t\|]+)", texto_norm, re.I)
     if sexo_m: info['sexo'] = sexo_m.group(1).strip()
     
-    nasc_m = re.search(r"Nascimento:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
+    nasc_m = re.search(r"(?:Nascimento|Data\s*de\s*Nascimento)[\s:\ºn]*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
     if nasc_m: info['nascimento'] = nasc_m.group(1).strip()
     
     nat_m = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°]|\s{2,}|\||$)", texto_norm, re.I)
@@ -71,9 +71,13 @@ def parse_text_data(texto_full):
     if cpf_m: info['cpf'] = cpf_m.group(1).strip()
     
     rg_m = re.search(r"(?:RG|RNE)[\s:\ºn]*([\d\.\-A-Za-z/]+)", texto_norm, re.I)
+    if not rg_m:
+        rg_m = re.search(r"(?:Documento|Identidade)[\s:\ºn]*([\d\.\-A-Za-z/]+)", texto_norm, re.I)
     if rg_m: info['rg'] = rg_m.group(1).strip()
     
     mat_m = re.search(r"N[ºo°]\s*da\s*Matricula:\s*([\d]+)", texto_norm, re.I)
+    if not mat_m:
+        mat_m = re.search(r"Matr[ií]cula[\s:\ºn]*([\d]+)", texto_norm, re.I)
     if mat_m: info['ra'] = mat_m.group(1).strip()
     
     ing_m = re.search(r"(?:Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
@@ -85,7 +89,7 @@ def parse_text_data(texto_full):
         info['situacao'] = v_sit
         info['situacao_siiu'] = v_sit
     
-    term_m = re.search(r"Término\s*Previsto:\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
+    term_m = re.search(r"(?:Término\s*Previsto|Previsão\s*de\s*Término|Término|Data\s*Limite|Conclusão\s*Prevista)[\s:\ºn]*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
     if term_m: info['termino_previsto'] = term_m.group(1).strip()
     
     forma_m = re.search(r"Forma\s*de\s*Ingresso:\s*(.*?)(?=\s{2,}|\n|Homologação|Homologacao|Programa|\||$)", texto_norm, re.I)
@@ -749,11 +753,7 @@ def extract_candidate_details_direct(login, senha, candidate, baixar_historico=T
         return {"status": "fallback"}
 
 def extract_candidate_details(login, senha, candidate, baixar_historico, baixar_comprovante, cached_driver=None):
-    """Extrai detalhes do candidato no SIIU via HTTP direto primeiro, com fallback para Playwright Headless."""
-    res_direct = extract_candidate_details_direct(login, senha, candidate, baixar_historico, baixar_comprovante)
-    if res_direct.get("status") == "success":
-        return res_direct
-
+    """Extrai detalhes do candidato no SIIU usando Playwright Headless com leitura integral de PDF."""
     def _task(page):
         return _extract_page_logic(page, candidate, baixar_historico, baixar_comprovante)
     return _run_with_playwright_page(login, senha, _task)
