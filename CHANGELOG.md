@@ -2,6 +2,18 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.5] — 24/08/2026 (Horário: 13:39)
+
+### 🔄 Alinhamento Completo de Busca & Conferência EMTU com as Diretrizes da SPTrans
+- **Extração Integral de PDF do Histórico Acadêmico**:
+  - Unificado o motor de extração do discente para processar o download do histórico acadêmico em PDF de forma 100% invisível em segundo plano, garantindo a recuperação fiel de CPF, RG, Término do Curso, Nome, RA e PPG.
+- **Normalização de Comparação para RG, CPF e Término do Curso**:
+  - O comparador de campos do módulo EMTU foi alinhado ao da SPTrans para utilizar comparação numérica de dígitos (`digits`) no RG e CPF, além da normalização de datas no término do curso, eliminando divergências por pontuação ou formatação.
+- **Formatação Limpa na Sequência de Cópia EMTU**:
+  - Aplicada a exibição de CPF, RG e CEP sem pontos na lista de cópia rápida para o portal da EMTU.
+
+---
+
 ## [v1.1.4] — 24/08/2026 (Horário: 13:31)
 
 ### 🟢 Botão "Confirmar cadastro na EMTU" & Registro POLARE no Módulo EMTU

@@ -868,16 +868,7 @@ def search_and_extract_student_direct(login, senha, query, programa, fallback_na
         return {"status": "fallback"}
 
 def search_and_extract_student(login, senha, query, programa, cached_driver=None, fallback_name=None):
-    """Busca e extrai detalhes do discente no SIIU usando primeiramente Conexão Direta HTTP e fallback para Playwright Headless."""
-    # 1. Tentar busca ultra-rápida via Conexão Direta HTTP (1 a 2 segundos)
-    res_direct = search_and_extract_student_direct(login, senha, query, programa, fallback_name)
-    if res_direct.get("status") in ("success", "error"):
-        if res_direct.get("candidates"):
-            return res_direct
-        elif res_direct.get("status") == "error":
-            return res_direct
-
-    # 2. Fallback para Playwright Headless (100% invisível em segundo plano)
+    """Busca e extrai detalhes do discente no SIIU usando Playwright Headless de forma 100% invisível em segundo plano com leitura de PDF."""
     def _task(page):
         search_res = _search_page_logic(page, query, programa, fallback_name)
         if search_res.get("status") == "error":

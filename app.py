@@ -2507,7 +2507,7 @@ def show_demand_page(sheet_id, info):
                                     ("NÚMERO DE MATRÍCULA", tf['matricula']['val'], ainfo.get('ra', '') or ainfo.get('matricula', ''), "digits", tf['matricula']['col_name'], tf['matricula']['col_idx']),
                                     ("Nome completo", tf['nome']['val'], ainfo.get('nome', ''), "text", tf['nome']['col_name'], tf['nome']['col_idx']),
                                     ("CPF", tf['cpf']['val'], ainfo.get('cpf', ''), "digits", tf['cpf']['col_name'], tf['cpf']['col_idx']),
-                                    ("RG ou RNE", plan_rg_num, siiu_rg_num, "text", tf['rg']['col_name'], tf['rg']['col_idx']),
+                                    ("RG ou RNE", plan_rg_num, siiu_rg_num, "digits", tf['rg']['col_name'], tf['rg']['col_idx']),
                                     ("Término do Curso", tf['termino_curso']['val'], ainfo.get('termino_previsto', ''), "date", tf['termino_curso']['col_name'], tf['termino_curso']['col_idx']),
                                 ]
                                 
@@ -2582,11 +2582,15 @@ def show_demand_page(sheet_id, info):
                                         st.code(v_seq or "Não informado", language="text")
                                         
                             else: # EMTU
+                                val_cpf_emtu = (tf['cpf']['val'] or ainfo.get('cpf', '')).replace('.', '').strip()
+                                val_rg_emtu = (plan_rg_num or tf['rg']['val'] or ainfo.get('rg', '')).replace('.', '').strip()
+                                val_cep_emtu = (tf['cep']['val'] or '').replace('.', '').strip()
+
                                 seq_emtu = [
-                                    ("1. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
+                                    ("1. CPF", val_cpf_emtu),
                                     ("2. Nome Completo", tf['nome']['val'] or ainfo.get('nome', '')),
-                                    ("3. RG", tf['rg']['val'] or ainfo.get('rg', '')),
-                                    ("4. CEP", tf['cep']['val']),
+                                    ("3. RG", val_rg_emtu),
+                                    ("4. CEP", val_cep_emtu),
                                     ("5. Programa de Pós-Graduação", tf['ppg']['val'] or ainfo.get('programa', '')),
                                     ("6. Frequência", tf['frequencia']['val']),
                                     ("7. Período do curso", tf['periodo']['val']),
