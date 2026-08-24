@@ -2581,48 +2581,6 @@ def show_demand_page(sheet_id, info):
                                         st.markdown(f"**{l_seq}:**")
                                         st.code(v_seq or "Não informado", language="text")
                                         
-                                st.write("---")
-                                st.markdown("#### 🟢 Efetivação do Cadastro na SPTrans")
-                                
-                                # Busca dinâmica das colunas 'POLARE / EXECUTANTE DA ATIVIDADE' e 'DATA DA EXECUÇÃO'
-                                col_exec_idx = None
-                                col_dt_idx = None
-                                import unicodedata
-                                for idx_h, col_h in enumerate(header):
-                                    c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
-                                    if ("polare" in c_norm or "executante" in c_norm):
-                                        col_exec_idx = idx_h
-                                    elif "data" in c_norm and "execucao" in c_norm:
-                                        col_dt_idx = idx_h
-                                        
-                                if col_exec_idx is None and len(header) > 38: col_exec_idx = 38
-                                if col_dt_idx is None and len(header) > 39: col_dt_idx = 39
-
-                                val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
-                                val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
-
-                                if val_exec_atual or val_dt_atual:
-                                    st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data/Horário da Execução:** `{val_dt_atual or 'Não informado'}`")
-
-                                btn_confirm_sptrans_k = f"btn_conf_sptrans_{idx_real_na_planilha}"
-                                if st.button("✅ Confirmar cadastro na SPTrans", key=btn_confirm_sptrans_k, type="primary", use_container_width=True):
-                                    executante_usuario = st.session_state.get('login_siiu', '').strip()
-                                    if not executante_usuario:
-                                        executante_usuario = "Usuário CaPGPq"
-                                        
-                                    agora_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                                    
-                                    try:
-                                        if col_exec_idx is not None:
-                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
-                                        if col_dt_idx is not None:
-                                            update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, agora_timestamp)
-                                            
-                                        st.success(f"🎉 Cadastro efetivado na SPTrans por **{executante_usuario}** em **{agora_timestamp}**!")
-                                        st.rerun()
-                                    except Exception as e_conf:
-                                        st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
-                                        
                             else: # EMTU
                                 seq_emtu = [
                                     ("1. CPF", tf['cpf']['val'] or ainfo.get('cpf', '')),
@@ -2661,6 +2619,49 @@ def show_demand_page(sheet_id, info):
                                     with c_cols[idx_comp % 3]:
                                         st.markdown(f"**{lc}:**")
                                         st.code(vc or "Não informado", language="text")
+
+                            st.write("---")
+                            portal_curto = "SPTrans" if is_sptrans else "EMTU"
+                            st.markdown(f"#### 🟢 Efetivação do Cadastro ({portal_curto})")
+                            
+                            # Busca dinâmica das colunas 'POLARE / EXECUTANTE DA ATIVIDADE' e 'DATA DA EXECUÇÃO'
+                            col_exec_idx = None
+                            col_dt_idx = None
+                            import unicodedata
+                            for idx_h, col_h in enumerate(header):
+                                c_norm = "".join(c for c in unicodedata.normalize('NFD', str(col_h).lower()) if unicodedata.category(c) != 'Mn')
+                                if ("polare" in c_norm or "executante" in c_norm):
+                                    col_exec_idx = idx_h
+                                elif "data" in c_norm and "execucao" in c_norm:
+                                    col_dt_idx = idx_h
+                                    
+                            if col_exec_idx is None and len(header) > 38: col_exec_idx = 38
+                            if col_dt_idx is None and len(header) > 39: col_dt_idx = 39
+
+                            val_exec_atual = row_padded[col_exec_idx].strip() if (col_exec_idx is not None and col_exec_idx < len(row_padded)) else ""
+                            val_dt_atual = row_padded[col_dt_idx].strip() if (col_dt_idx is not None and col_dt_idx < len(row_padded)) else ""
+
+                            if val_exec_atual or val_dt_atual:
+                                st.success(f"✅ **Atividade Concluída!**\n\n👤 **Executante (POLARE):** `{val_exec_atual or 'Não informado'}` | 📅 **Data/Horário da Execução:** `{val_dt_atual or 'Não informado'}`")
+
+                            btn_confirm_k = f"btn_conf_exec_{sheet_id}_{idx_real_na_planilha}"
+                            if st.button(f"✅ Confirmar cadastro na {portal_curto}", key=btn_confirm_k, type="primary", use_container_width=True):
+                                executante_usuario = st.session_state.get('login_siiu', '').strip()
+                                if not executante_usuario:
+                                    executante_usuario = "Usuário CaPGPq"
+                                    
+                                agora_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                                
+                                try:
+                                    if col_exec_idx is not None:
+                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_exec_idx, executante_usuario)
+                                    if col_dt_idx is not None:
+                                        update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, col_dt_idx, agora_timestamp)
+                                        
+                                    st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{agora_timestamp}**!")
+                                    st.rerun()
+                                except Exception as e_conf:
+                                    st.error(f"Erro ao atualizar confirmação de cadastro na planilha: {e_conf}")
 
         if count == 0:
             st.info("Nenhuma atividade encontrada para o filtro selecionado.")

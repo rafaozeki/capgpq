@@ -2,6 +2,18 @@
 
 Todas as alterações notáveis, correções de bugs, novas funcionalidades e marcos históricos do projeto **Painel de Controle CaPGPq-EFLCH** estão registrados neste documento em ordem cronológica reversa.
 
+## [v1.1.4] — 24/08/2026 (Horário: 13:31)
+
+### 🟢 Botão "Confirmar cadastro na EMTU" & Registro POLARE no Módulo EMTU
+- **Efetivação de Cadastro na EMTU com 1 Clique**:
+  - Adicionado o botão **`✅ Confirmar cadastro na EMTU`** na seção de cópia e conferência do módulo EMTU.
+- **Gravação Automática de Executante e Data/Horário**:
+  - O sistema localiza dinamicamente as colunas `"POLARE / EXECUTANTE DA ATIVIDADE"` (Coluna 41) e `"DATA DA EXECUÇÃO"` (Coluna 42) da planilha EMTU, registrando o usuário logado e a estampa de data/horário.
+- **Integração com Filtros de Concluídas/Pendentes**:
+  - O status de conclusão e o filtro de pendências passam a operar de forma 100% sincronizada no módulo EMTU.
+
+---
+
 ## [v1.1.3] — 24/08/2026 (Horário: 13:23)
 
 ### ✂️ Formatação sem Pontos para RG, CPF e CEP na Sequência SPTrans
