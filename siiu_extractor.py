@@ -49,20 +49,29 @@ def parse_text_data(texto_full):
     nat_m = re.search(r"Naturalidade:\s*(.*?)(?=\n|CPF:|RG:|N[ºo°]|\s{2,}|\||$)", texto_norm, re.I)
     if nat_m: info['naturalidade'] = nat_m.group(1).strip()
     
-    cpf_m = re.search(r"(?:CPF|C\.P\.F\.)[\s:\ºn]*([\d\.\-]+)", texto_norm, re.I)
-    if not cpf_m:
-        cpf_m = re.search(r"\b(\d{3}\.\d{3}\.\d{3}\-\d{2})\b", texto_norm)
-    if cpf_m: info['cpf'] = cpf_m.group(1).strip()
+    cpf_m = re.search(r"(?:CPF|C\.P\.F\.)[\s:\ºn]*([\d\.\-\s]{11,18})", texto_norm, re.I)
+    if cpf_m:
+        raw_cpf = cpf_m.group(1).strip()
+        cpf_digits = re.sub(r'\D', '', raw_cpf)
+        if len(cpf_digits) >= 11:
+            cpf_d11 = cpf_digits[:11]
+            info['cpf'] = f"{cpf_d11[:3]}.{cpf_d11[3:6]}.{cpf_d11[6:9]}-{cpf_d11[9:11]}"
+        else:
+            info['cpf'] = raw_cpf
+    if not info.get('cpf'):
+        cpf_full_m = re.search(r"\b(\d{3}\.\d{3}\.\d{3}\-\d{2})\b", texto_norm)
+        if cpf_full_m:
+            info['cpf'] = cpf_full_m.group(1).strip()
     
     rg_m = re.search(r"(?:RG|RNE)[\s:\ºn]*([\d\.\-A-Za-z/]+)", texto_norm, re.I)
     if not rg_m:
         rg_m = re.search(r"(?:Documento|Identidade)[\s:\ºn]*([\d\.\-A-Za-z/]+)", texto_norm, re.I)
     if rg_m: info['rg'] = rg_m.group(1).strip()
     
-    mat_m = re.search(r"N[ºo°]\s*da\s*Matricula:\s*([\d]+)", texto_norm, re.I)
-    if not mat_m:
-        mat_m = re.search(r"Matr[ií]cula[\s:\ºn]*([\d]+)", texto_norm, re.I)
-    if mat_m: info['ra'] = mat_m.group(1).strip()
+    mat_m = re.search(r"(?:N[ºo°]\s*da\s*Matr[ií]cula|Matr[ií]cula|RA)[\s:\ºn]*([\d]{4,10})", texto_norm, re.I)
+    if mat_m: 
+        info['ra'] = mat_m.group(1).strip()
+        info['matricula'] = mat_m.group(1).strip()
     
     ing_m = re.search(r"(?:Início|Inicio):\s*([\d]{2}/[\d]{2}/[\d]{4})", texto_norm, re.I)
     if ing_m: info['ingresso'] = ing_m.group(1).strip()

@@ -2348,8 +2348,9 @@ def show_demand_page(sheet_id, info):
                 executante_hdr = just_conf_card.get("executante", "")
 
             status_prefix = f"✅ **CONCLUÍDO ({executante_hdr})** | " if executante_hdr else ""
+            is_card_open = st.session_state.get(f"exp_open_{sheet_id}_{idx_real_na_planilha}", False)
                 
-            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=False):
+            with st.expander(f"{status_prefix}👤 **{nome_val}** - 🕒 Solicitado em: {valor_data_completo}", expanded=is_card_open):
                 relevant_data = extract_relevant_data(row_padded, header)
                 card_items = sort_and_format_card_data(relevant_data)
                 
@@ -2382,6 +2383,7 @@ def show_demand_page(sheet_id, info):
                                                     try:
                                                         coluna_index = header.index(orig_key)
                                                         update_sheet_cell(sheet_id, info['aba'], idx_real_na_planilha, coluna_index, novo_valor)
+                                                        st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                                         st.success("Salvo com sucesso! A página irá recarregar.")
                                                         st.rerun()
                                                     except Exception as err:
@@ -2563,6 +2565,7 @@ def show_demand_page(sheet_id, info):
                                                     st.cache_data.clear()
                                                 except Exception:
                                                     pass
+                                                st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                                 st.success("Planilha atualizada com sucesso! Recarregando...")
                                                 st.rerun()
                                             except Exception as e_upd:
@@ -2637,6 +2640,7 @@ def show_demand_page(sheet_id, info):
                                             st.cache_data.clear()
                                         except Exception:
                                             pass
+                                        st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = True
                                         st.success("Observação gravada na coluna 'CADASTRO' da planilha!")
                                         st.rerun()
                                 except Exception as e_obs:
@@ -2742,6 +2746,7 @@ def show_demand_page(sheet_id, info):
                                     st.cache_data.clear()
                                 except Exception:
                                     pass
+                                st.session_state[f"exp_open_{sheet_id}_{idx_real_na_planilha}"] = False
                                 st.success(f"🎉 Cadastro efetivado na {portal_curto} por **{executante_usuario}** em **{data_apenas}**!")
                                 st.rerun()
                             except Exception as e_conf:
